@@ -1,0 +1,34 @@
+name: MinecordBridge
+version: '${project.version}'
+main: org.padrewin.minecordbridge.MinecordBridge
+api-version: '1.20'
+authors: [padrewin]
+
+commands:
+  minecord:
+    description: MinecordBridge Command
+    usage: /minecord (command) [arg1] [arg2]...
+    permission: minecord.main
+    permission-message: §8「§c1st§8§7»§f Nu ai permisiunea de a face asta!
+
+permissions:
+  minecord.*:
+    description: Full access to MinecordBridge plugin.
+    children:
+      minecord.reload: true
+      minecord.update: true
+      minecord.command.reload: true
+      minecord.command.retrolink: true
+      minecord.command.link: true
+  minecord.command.reload:
+    description: Can reload the plugin.
+    default: op
+  minecord.update:
+    description: Check for updates.
+    default: op
+  minecord.command.retrolink:
+    description: Send retroactive message to all users that have the roles mentioned in the config.yml file.
+    default: op
+  minecord.command.link:
+    description: Allow users to use "/minecord link" command.
+    default: op
