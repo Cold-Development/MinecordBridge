@@ -1,16 +1,16 @@
 package org.padrewin.minecordbridge.javacord;
 
+import org.bukkit.entity.Player;
+import org.javacord.api.entity.message.MessageBuilder;
 import org.padrewin.minecordbridge.MinecordBridge;
 import org.padrewin.minecordbridge.database.Database;
 import org.padrewin.minecordbridge.listeners.discord.DiscordMessageListener;
 import org.padrewin.minecordbridge.listeners.discord.DMListener;
 import org.padrewin.minecordbridge.listeners.discord.RoleAddListener;
 import org.padrewin.minecordbridge.listeners.discord.RoleRemoveListener;
-import org.bukkit.entity.Player;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.channel.TextChannel;
-import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.permission.Role;
 import org.javacord.api.entity.server.Server;
 import org.javacord.api.entity.user.User;
@@ -47,23 +47,26 @@ public class JavacordHelper {
     public void disableAPI() {
         try {
             if (api != null) {
-                api.disconnect();
+                api.disconnect().join();
             }
             api = null;
         } catch (Exception e) {
-            minecord.error("Error Disconnecting from API! Contact the developer.");
+            minecord.error("Error Disconnecting from API! Stack Trace:");
+            minecord.error(e.getMessage());
         }
     }
 
     public void reload() {
-        api.removeListener(roleAddListener);
-        api.removeListener(roleRemoveListener);
+        if (api != null) {
+            api.removeListener(roleAddListener);
+            api.removeListener(roleRemoveListener);
+            if (minecord.useChatStream) {
+                api.removeListener(discordMessageListener);
+            }
+        }
         roleAddListener = null;
         roleRemoveListener = null;
-        if (minecord.useChatStream) {
-            api.removeListener(discordMessageListener);
-            discordMessageListener = null;
-        }
+        discordMessageListener = null;
 
         disableAPI();
         parseConfig();
@@ -124,29 +127,12 @@ public class JavacordHelper {
 
     }
 
-    public void retroLink(Player player) {
-        int users = 0;
-        for (Role role : roles) {
-            User[] usersInRole = new User[role.getUsers().size()];
-            usersInRole = role.getUsers().toArray(usersInRole);
-            if (usersInRole.length == 0) {
-                minecord.warn("No users in" + role.getName() + " role!");
-                minecord.sendMessage(player,"No users in " + role.getName() + " role!");
-                break;
-            }
-            users = getUsers(users, role, usersInRole);
-            minecord.sendMessage(player, role.getName() + ": " + users);
-        }
-        minecord.log("Total: " + users);
-        minecord.sendMessage(player,"Total: " + users);
-    }
-
     public boolean retroLinkSingle(Player player, String discriminatedName, String roleName) {
         try {
             Optional<User> userOpt = api.getCachedUserByDiscriminatedName(discriminatedName);
             if (!userOpt.isPresent()) {
                 minecord.error("User not found: " + discriminatedName);
-                minecord.sendMessage(player, "&fUser not found: " + discriminatedName);
+                minecord.sendMessage(player, "&cUser not found: " + discriminatedName);
                 return false;
             }
             User user = userOpt.get();
@@ -154,13 +140,13 @@ public class JavacordHelper {
             Optional<Role> roleOpt = discordServer.getRoleById(roleAndID.get(roleName));
             if (!roleOpt.isPresent()) {
                 minecord.error("Role not found: " + roleName);
-                minecord.sendMessage(player, "&fRole not found: " + roleName + ". Note that role names are case-sensitive.");
+                minecord.sendMessage(player, "&cRole not found: " + roleName + ". Note that role names are case-sensitive.");
                 return false;
             }
             Role role = roleOpt.get();
 
             if (db.doesEntryExist(user.getId())) {
-                minecord.sendMessage(player, "&fUser is already linked.");
+                minecord.sendMessage(player, "&cUser is already linked.");
                 return false;
             }
             sendRoleAddMessage(role, user);
@@ -168,11 +154,11 @@ public class JavacordHelper {
         } catch (NoSuchElementException e) {
             minecord.error("Error adding user to role: " + discriminatedName + ". Stack Trace:");
             minecord.error(e.getMessage());
-            minecord.sendMessage(player, "&fError adding user to role: " + discriminatedName);
+            minecord.sendMessage(player, "&cError adding user to role: " + discriminatedName);
             return false;
         } catch (Exception e) {
             minecord.error("General error: " + e.getMessage());
-            minecord.sendMessage(player, "&fGeneral error: " + e.getMessage());
+            minecord.sendMessage(player, "&cGeneral error: " + e.getMessage());
             return false;
         }
     }

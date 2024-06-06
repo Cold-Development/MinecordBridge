@@ -1,6 +1,7 @@
 package org.padrewin.minecordbridge;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
+import org.bukkit.entity.Player;
 import org.padrewin.minecordbridge.commands.MCBCommand;
 import org.padrewin.minecordbridge.commands.tabcomplete.MCBTabComplete;
 import org.padrewin.minecordbridge.database.Database;
@@ -14,7 +15,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
@@ -22,7 +23,10 @@ import org.bukkit.plugin.PluginManager;
 import org.bukkit.plugin.RegisteredServiceProvider;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -110,7 +114,6 @@ public class MinecordBridge extends JavaPlugin {
         if (useChatStream) {
             ChatListener.sendServerStartMessage();
         }
-
     }
 
     @Override
@@ -121,6 +124,14 @@ public class MinecordBridge extends JavaPlugin {
 
         if (js != null) {
             js.disableAPI();
+        }
+
+        // Unregister all listeners
+        HandlerList.unregisterAll(this);
+
+        // Close the database connection
+        if (db != null) {
+            db.close(); // Remove try-catch if SQLException is not thrown
         }
     }
 
@@ -159,7 +170,6 @@ public class MinecordBridge extends JavaPlugin {
         } else {
             js.reload();
         }
-
     }
 
     public void initListeners() {
