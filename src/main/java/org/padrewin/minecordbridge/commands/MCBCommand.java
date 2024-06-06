@@ -33,11 +33,7 @@ public class MCBCommand implements CommandExecutor {
                     minecord.sendMessage(player, "&fConfig reloaded!");
                     return true;
                 } else if (args[0].equalsIgnoreCase("retrolink")) {
-                    if (args.length == 1) {
-                        js.retroLink(player);
-                    } else if (args.length == 3) {
-                        js.retroLinkSingle(args[1], args[2]);
-                    }
+                    handleRetroLinkCommand(player, args);
                     return true;
                 } else if (args[0].equalsIgnoreCase("link")) {
                     if (args.length == 1) return false;
@@ -57,6 +53,7 @@ public class MCBCommand implements CommandExecutor {
                         return true;
                     } else if (args[0].equalsIgnoreCase("retrolink")) {
                         js.retroLink();
+                        return true;
                     } else if (args[0].equalsIgnoreCase("link")) {
                         minecord.warn("Comanda poate fi folosita decat de un jucator!");
                         return true;
@@ -70,10 +67,47 @@ public class MCBCommand implements CommandExecutor {
         return false;
     }
 
+    private void handleRetroLinkCommand(Player player, String[] args) {
+        if (args.length < 2) {
+            minecord.sendMessage(player, "&fInvalid command usage. Use &c/minecord retrolink <username#discriminator> <role>");
+            return;
+        }
+
+        String discriminatedName;
+        String roleName;
+
+        if (args.length == 2) {
+            discriminatedName = args[1];
+            minecord.sendMessage(player, "&cRole is mandatory. &fPlease specify a role.");
+            return;
+        } else if (args.length == 3) {
+            discriminatedName = args[1];
+            roleName = args[2];
+        } else {
+            minecord.sendMessage(player, "&cInvalid command usage. &fUse &c/minecord retrolink <username#discriminator> <role>");
+            return;
+        }
+
+        if (!discriminatedName.contains("#")) {
+            minecord.sendMessage(player, "&cInvalid username format. &fPlease include a discriminator.");
+            return;
+        }
+
+        try {
+            boolean isLinked = js.retroLinkSingle(player, discriminatedName, roleName);
+            if (isLinked) {
+                minecord.sendMessage(player, "&fInstructions sent &2successfully&f.");
+            }
+        } catch (Exception e) {
+            minecord.sendMessage(player, "&cError linking user: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
     private void startLinking(Player player, String discName) {
         Database db = MinecordBridge.getDatabase();
         if (db.doesEntryExist(player.getUniqueId())) {
-            minecord.sendMessage(player, "&cContul tau este deja verificat!");
+            minecord.sendMessage(player, "&fContul tau este deja &2verificat&f!");
             return;
         }
 
@@ -117,5 +151,4 @@ public class MCBCommand implements CommandExecutor {
         db.removeLink(player.getUniqueId());
         minecord.sendMessage(player, "Contul a fost scos din verificare cu succes!");
     }
-
 }

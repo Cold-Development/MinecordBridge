@@ -29,9 +29,9 @@ public class MCBTabComplete implements TabCompleter {
             }
             case 2 -> {
                 if (args[0].equalsIgnoreCase("link") && sender.hasPermission("minecord.link"))
-                    tabs.add("<666pyke#0>");
+                    tabs.add("<padrewin>");
                 else if (args[0].equalsIgnoreCase("retrolink") && sender.hasPermission("minecord.retrolink"))
-                    tabs.add("<padrewin#0>");
+                    tabs.add("<666pyke>");
                 yield tabs;
             }
             case 3 -> {

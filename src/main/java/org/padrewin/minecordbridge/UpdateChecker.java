@@ -26,7 +26,7 @@ public class UpdateChecker {
                     consumer.accept(scanner.next());
                 }
             } catch (IOException e) {
-                this.plugin.getLogger().warning("No update found: " + e.getMessage());
+                this.plugin.getLogger().warning("Cannot look for updates: " + e.getMessage());
             }
         });
     }

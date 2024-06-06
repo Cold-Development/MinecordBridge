@@ -70,18 +70,18 @@ public class MinecordBridge extends JavaPlugin {
             config = getCustomConfig();
             saveCustomConfig();
         } catch (Exception e) {
-            error("Error setting up the config! Contact padrewin for assistance. Stack Trace:");
+            error("Error setting up the config! Contact the developer if you cannot fix this issue. Stack Trace:");
             error(e.getMessage());
         }
 
         /* Load the Database */
         try {
             db = new Database("minecord.sqlite.db");
-            log("Database found! Path is " + db.getDbPath());
+            log("Database Found! Path is " + db.getDbPath());
         } catch (SQLException e) {
-            error("Error setting up database!");
-            error("Exception message:" + e.getMessage());
-            error("MySQL status: " + e.getSQLState());
+            error("Error setting up database! Is there permissions issue preventing the database file creation?");
+            error("Exception Message:" + e.getMessage());
+            error("SQL State: " + e.getSQLState());
         }
 
         /* Config Parsing */
@@ -91,7 +91,7 @@ public class MinecordBridge extends JavaPlugin {
             js = new JavacordHelper(roleNames);
             initListeners();
         } else {
-            error("Invalid config! Please make sure you're setting up properly.");
+            error("Config Not Properly Configured! Plugin will not function!");
         }
 
         /* Get the Plugin manager for finding other permissions plugins */
@@ -103,7 +103,7 @@ public class MinecordBridge extends JavaPlugin {
             Objects.requireNonNull(this.getCommand("minecord")).setExecutor(new MCBCommand());
             Objects.requireNonNull(this.getCommand("minecord")).setTabCompleter(new MCBTabComplete());
         } catch (NullPointerException e) {
-            error("Error setting up commands! Contact padrewin for assistance. Stack Trace:");
+            error("Error setting up commands! Contact the developer if you cannot fix this issue. Stack Trace:");
             error(e.getMessage());
         }
 
@@ -138,11 +138,11 @@ public class MinecordBridge extends JavaPlugin {
         /* Reload database if it's gone */
         try {
             if (!db.testConnection())
-                if (db.getDbPath().isEmpty() || db.getDbPath().isBlank() || db.getDbPath() == null) new Database("minecordbridge.sqlite.db");
+                if (db.getDbPath().isEmpty() || db.getDbPath().isBlank() || db.getDbPath() == null) new Database("minecord.sqlite.db");
         } catch (SQLException e) {
-            error("Error setting up database! Check error:");
-            error("Error message: " + e.getMessage());
-            error("MySQL status: " + e.getSQLState());
+            error("Error setting up database! Is there permissions issue preventing the database file creation? View the following error message:");
+            error("Error Message: " + e.getMessage());
+            error("SQL State: " + e.getSQLState());
         }
 
         if (parseConfig()) {
@@ -150,7 +150,7 @@ public class MinecordBridge extends JavaPlugin {
             initListeners();
             initChatStream();
         } else {
-            error("Config is invalid. Plugin won't function properly!");
+            error("Config Not Properly Configured! Plugin will not function!");
             return;
         }
 
@@ -164,7 +164,7 @@ public class MinecordBridge extends JavaPlugin {
 
     public void initListeners() {
         try {
-            new org.padrewin.minecordbridge.UpdateChecker(this, 88409).getVersion(version -> {
+            new UpdateChecker(this, 88409).getVersion(version -> {
                 // Initializes Login Listener when no Updates
                 if (compareVersions(this.getPluginMeta().getVersion(), version) < 0) {
                     versions[0] = version;
@@ -175,35 +175,35 @@ public class MinecordBridge extends JavaPlugin {
                 }
             });
         } catch (Exception e) {
-            error("Error checking version update! Contact padrewin for assistance. Stack Trace:");
+            error("Error initializing Update Checker! Contact the developer if you cannot fix this issue. Stack Trace:");
             error(e.getMessage());
         }
-        log("Minecraft listener loaded!");
+        log("Minecraft Listeners Loaded!");
     }
 
     public boolean parseConfig() {
         try {
             botToken = getConfigString("bot-token");
-            if (getConfigString("bot-token").equalsIgnoreCase("BOT_TOKEN") || getConfigString("bot-token").equalsIgnoreCase("")) throw new Exception();
+            if (getConfigString("bot-token").equalsIgnoreCase("BOTTOKEN") || getConfigString("bot-token").equalsIgnoreCase("")) throw new Exception();
         } catch (Exception e) {
             saveDefaultConfig();
-            warn("Your BOT_TOKEN is invalid! Make sure you're using a valid BOT_TOKEN in config.yml and restart the plugin.");
+            warn("Invalid Bot Token! Please enter a valid Bot Token in config.yml and reload the plugin.");
             return false;
         }
 
         try {
             serverID = getConfigString("server-id");
-            if (getConfigString("server-id").equalsIgnoreCase("SERVER_ID") || getConfigString("server-id").equalsIgnoreCase("")) throw new Exception();
-            log("Discord server found!");
+            if (getConfigString("server-id").equalsIgnoreCase("000000000000000000") || getConfigString("server-id").equalsIgnoreCase("")) throw new Exception();
+            log("Discord Server Found!");
         } catch (Exception e) {
             saveDefaultConfig();
-            warn("SERVER_ID invalid! Make sure you're using a valid SERVER_ID in config.yml and restart the plugin.");
+            warn("Invalid Server ID! Please enter a valid Server ID in config.yml and reload the plugin.");
             return false;
         }
 
         changeNickOnLink = getConfigBool("change-nickname-on-link");
 
-        log("Config loaded!");
+        log("Config Loaded!");
         return true;
     }
 
@@ -214,7 +214,7 @@ public class MinecordBridge extends JavaPlugin {
             if (permissionsPlugin.isEnabled() && getConfigBool("chatstream-use-permission-groups")) {
                 usePex = true;
                 useLuckPerms = false;
-                log("PermissionsEx was found! Setting up the permissions..");
+                log("PermissionsEx Detected! Hooking Permissions");
             }
         } catch (AssertionError | NullPointerException e) {
             try {
@@ -227,10 +227,10 @@ public class MinecordBridge extends JavaPlugin {
                     }
                     useLuckPerms = true;
                     usePex = false;
-                    log("LuckPerms was found! Setting up the permissions..");
+                    log("LuckPerms Detected! Hooking Permissions");
                 }
             } catch (AssertionError | NullPointerException f) {
-                log("Plugin permissions were not found!");
+                log("No permissions plugin found!");
             }
         }
         return permissionsPlugin;
@@ -255,20 +255,20 @@ public class MinecordBridge extends JavaPlugin {
             }
         } catch (Exception e) {
             saveDefaultConfig();
-            error("Error fetching roles! Make sure that config.yml is properly configured and restart the plugin. Stack Trace:");
+            error("Error parsing roles! Make sure the config.yml is correct and reload the plugin. Stack Trace:");
         }
     }
 
     public void initChatStream() {
         useChatStream = getConfigBool("enable-chatstream");
         if (!useChatStream) return;
-        log("ChatStream enabled! Loading necessary configurations..");
+        log("ChatStream enabled! Loading necessary config items");
         try {
             chatStreamID = getConfigString("chatstream-channel");
             chatStreamMessageFormat = replaceColors(getConfigString("chatstream-message-format"));
         } catch (Exception e) {
             saveDefaultConfig();
-            warn("Invalid CHANNEL_ID for ChatStream! Use a valid CHANNEL_ID in the config.yml and restart the plugin.");
+            warn("Invalid Channel ID for ChatStream! Please enter a valid Channel ID in the config.yml and reload the plugin.");
         }
         getServer().getPluginManager().registerEvents(new LogoutListener(), this);
         getServer().getPluginManager().registerEvents(new ChatListener(), this);
@@ -295,7 +295,7 @@ public class MinecordBridge extends JavaPlugin {
         try {
             defConfigStream = new InputStreamReader(Objects.requireNonNull(this.getResource("config.yml")), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            error("Error loading default config! Contact padrewin for assistance. Stack Trace:");
+            error("Error loading default config! Contact the developer if you cannot fix this issue. Stack Trace:");
             error(e.getMessage());
         }
         if (defConfigStream != null) {
@@ -318,7 +318,7 @@ public class MinecordBridge extends JavaPlugin {
         try {
             getCustomConfig().save(customConfigFile);
         } catch (IOException ex) {
-            getLogger().log(Level.SEVERE, "Error saving config in " + customConfigFile, ex);
+            getLogger().log(Level.SEVERE, "Could not save config to " + customConfigFile, ex);
         }
     }
 
@@ -350,7 +350,7 @@ public class MinecordBridge extends JavaPlugin {
 
     public void sendMessage(CommandSender sender, String message) {
         if (sender instanceof Player player) {
-            player.sendMessage("§8「§c1st§8」§7» §f" + replaceColors(message));
+            player.sendMessage("§8「§c1st§8」§7»§f " + replaceColors(message));
         } else {
             log(message);
         }
