@@ -3,6 +3,9 @@
 # Author: padrewin
 #################################################
 
+# Plugin tag configuration
+plugin-tag: "§8「§cMinecord§8」§7»§f " # The tag to be used in front of messages.
+
 debug: false # If set to true, it will enable debug mode for detailed logging.
 
 # Discord bot token

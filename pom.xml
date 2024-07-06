@@ -2,14 +2,14 @@
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-  <modelVersion>4.0.0</modelVersion>
+    <modelVersion>4.0.0</modelVersion>
 
-  <groupId>org.padrewin</groupId>
-  <artifactId>MinecordBridge</artifactId>
-  <version>2.4</version>
-  <packaging>jar</packaging>
+    <groupId>org.padrewin</groupId>
+    <artifactId>MinecordBridge</artifactId>
+    <version>2.4.4</version>
+    <packaging>jar</packaging>
 
-  <name>MinecordBridge</name>
+    <name>MinecordBridge</name>
 
     <properties>
         <java.version>17</java.version>
@@ -34,6 +34,12 @@
             <id>AlessioDP</id>
             <url>https://repo.alessiodp.com/releases/</url>
         </repository>
+        <!-- Add the Javacord repository -->
+        <repository>
+            <id>javacord-repo</id>
+            <name>Javacord Repository</name>
+            <url>https://maven.javacord.org/repository/maven-public/</url>
+        </repository>
     </repositories>
 
     <dependencies>
@@ -54,7 +60,6 @@
             <artifactId>javacord</artifactId>
             <version>3.8.0</version>
             <scope>provided</scope>
-            <type>pom</type>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.jetbrains/annotations -->
         <dependency>
@@ -102,78 +107,7 @@
                 <version>3.5.0</version>
                 <configuration>
                     <relocations>
-                        <relocation>
-                            <pattern>org.javacord.javacord-api</pattern>
-                            <shadedPattern>lib.org.javacord.javacord-api</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.javacord.javacord-core</pattern>
-                            <shadedPattern>lib.org.javacord.javacord-core</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.squareup.okhttp3.okhttp</pattern>
-                            <shadedPattern>lib.com.squareup.okhttp3.okhttp</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.squareup.okio.okio</pattern>
-                            <shadedPattern>lib.com.squareup.okio.okio</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.jetbrains.kotlin.kotlin-stdlib-common</pattern>
-                            <shadedPattern>lib.org.jetbrains.kotlin.kotlin-stdlib-common</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.jetbrains.kotlin.kotlin-stdlib</pattern>
-                            <shadedPattern>lib.org.jetbrains.kotlin.kotlin-stdlib</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.squareup.okhttp3.logging-interceptor</pattern>
-                            <shadedPattern>lib.com.squareup.okhttp3.logging-interceptor</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.jetbrains.kotlin.kotlin-stdlib-jdk8</pattern>
-                            <shadedPattern>lib.org.jetbrains.kotlin.kotlin-stdlib-jdk8</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.jetbrains.kotlin.kotlin-stdlib-jdk7</pattern>
-                            <shadedPattern>lib.org.jetbrains.kotlin.kotlin-stdlib-jdk7</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.neovisionaries.nv-websocket-client</pattern>
-                            <shadedPattern>lib.com.neovisionaries.nv-websocket-client</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.codahale.xsalsa20poly1305</pattern>
-                            <shadedPattern>lib.com.codahale.xsalsa20poly1305</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.bouncycastle.bcprov-jdk15on</pattern>
-                            <shadedPattern>lib.org.bouncycastle.bcprov-jdk15on</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>io.vavr.vavr</pattern>
-                            <shadedPattern>lib.io.vavr.vavr</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>io.vavr.vavr-match</pattern>
-                            <shadedPattern>lib.io.vavr.vavr-match</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>org.jetbrains.annotations</pattern>
-                            <shadedPattern>lib.org.jetbrains.annotations</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.fasterxml.jackson.core.jackson-databind</pattern>
-                            <shadedPattern>lib.com.fasterxml.jackson.core.jackson-databind</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.fasterxml.jackson.core.jackson-annotations</pattern>
-                            <shadedPattern>lib.com.fasterxml.jackson.core.jackson-annotations</shadedPattern>
-                        </relocation>
-                        <relocation>
-                            <pattern>com.fasterxml.jackson.core.jackson-core</pattern>
-                            <shadedPattern>lib.com.fasterxml.jackson.core.jackson-core</shadedPattern>
-                        </relocation>
+                        <!-- Your relocation configurations -->
                     </relocations>
                 </configuration>
                 <executions>

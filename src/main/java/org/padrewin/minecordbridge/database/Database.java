@@ -243,5 +243,32 @@ public class Database {
     }
 
     public void close() {
+        try {
+            if (dbcon != null && !dbcon.isClosed()) {
+                dbcon.close();
+            }
+        } catch (SQLException e) {
+            minecord.error("Error closing the database connection: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Retrieves all linked users from the database.
+     * @return List of UUIDs of all linked users.
+     */
+    public List<UUID> getAllLinkedUsers() {
+        List<UUID> linkedUsers = new ArrayList<>();
+        try {
+            PreparedStatement stmt = dbcon.prepareStatement("SELECT minecraftid FROM link");
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                linkedUsers.add(UUID.fromString(rs.getString("minecraftid")));
+            }
+        } catch (SQLException e) {
+            minecord.error("Error retrieving all linked users from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return linkedUsers;
     }
 }

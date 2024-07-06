@@ -30,7 +30,7 @@ public class MCBCommand implements CommandExecutor {
             if (sender instanceof Player player) {
                 if (args[0].equalsIgnoreCase("reload")) {
                     minecord.reload();
-                    minecord.sendMessage(player, "&fConfig reloaded!");
+                    minecord.sendMessage(player, "&fConfig &2reloaded&f!");
                     return true;
                 } else if (args[0].equalsIgnoreCase("retrolink")) {
                     handleRetroLinkCommand(player, args);
@@ -43,7 +43,7 @@ public class MCBCommand implements CommandExecutor {
                     unlink(player);
                     return true;
                 } else {
-                    minecord.sendMessage(player, "&cComanda nu a fost gasita!");
+                    minecord.sendMessage(player, "&cCommand not found!");
                     return true;
                 }
             } else if (sender instanceof ConsoleCommandSender) {
@@ -55,10 +55,10 @@ public class MCBCommand implements CommandExecutor {
                         js.retroLink();
                         return true;
                     } else if (args[0].equalsIgnoreCase("link")) {
-                        minecord.warn("Comanda poate fi folosita decat de un jucator!");
+                        minecord.warn("Command can be used only by a player!");
                         return true;
                     } else {
-                        minecord.warn("Comanda nu a fost gasita!");
+                        minecord.warn("Command not found!");
                         return true;
                     }
                 }
@@ -69,7 +69,7 @@ public class MCBCommand implements CommandExecutor {
 
     private void handleRetroLinkCommand(Player player, String[] args) {
         if (args.length < 2) {
-            minecord.sendMessage(player, "&fInvalid command usage. Use &c/minecord retrolink <username#discriminator> <role>");
+            minecord.sendMessage(player, "&fInvalid command usage. Use &c/minecord retrolink <username#0> <role>");
             return;
         }
 
@@ -78,18 +78,18 @@ public class MCBCommand implements CommandExecutor {
 
         if (args.length == 2) {
             discriminatedName = args[1];
-            minecord.sendMessage(player, "&cRole is mandatory. &fPlease specify a role.");
+            minecord.sendMessage(player, "&cRole is mandatory. &fPlease specify a role. &7(&fexample: &2Nitro&7)");
             return;
         } else if (args.length == 3) {
             discriminatedName = args[1];
             roleName = args[2];
         } else {
-            minecord.sendMessage(player, "&cInvalid command usage. &fUse &c/minecord retrolink <username#discriminator> <role>");
+            minecord.sendMessage(player, "&cInvalid command usage. &fUse &c/minecord retrolink <username#0> <role>");
             return;
         }
 
         if (!discriminatedName.contains("#")) {
-            minecord.sendMessage(player, "&cInvalid username format. &fPlease include a discriminator.");
+            minecord.sendMessage(player, "&cInvalid username format. &fPlease include a discriminator. &7(&fexample: &2user#0&7)");
             return;
         }
 
@@ -107,7 +107,7 @@ public class MCBCommand implements CommandExecutor {
     private void startLinking(Player player, String discName) {
         Database db = MinecordBridge.getDatabase();
         if (db.doesEntryExist(player.getUniqueId())) {
-            minecord.sendMessage(player, "&fContul tau este deja &2verificat&f!");
+            minecord.sendMessage(player, "&fAccount already &2linked&f!");
             return;
         }
 
@@ -120,14 +120,14 @@ public class MCBCommand implements CommandExecutor {
             }
 
             if (user == null) {
-                minecord.sendMessage(player, "&c Jucatorul nu este pe server-ul de Discord sau discriminatorul este incorect!");
+                minecord.sendMessage(player, "&cPlayer is not found on &9Discord &cserver or discriminator is not found!");
                 return;
             }
 
             try {
                 new MessageBuilder()
-                        .append("Tocmai incerci sa iti verifici contul de minecraft pe server-ul de discord. ")
-                        .append("\nRaspunde scriind \"DA\" pentru a continua, sau \"NU\" daca crezi ca a fost o greseala.")
+                        .append("You are attempting to link your Discord and Minecraft accounts. ")
+                        .append("\nAnswer with \"**YES**\" to continue or \"**NO**\" if you think this was an error.")
                         .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
             } catch (Exception e) {
                 minecord.error("Error sending message to user! Stack Trace:");
@@ -135,20 +135,20 @@ public class MCBCommand implements CommandExecutor {
             }
             user.addUserAttachableListener(new DMListener(pmChannel));
         } catch (NullPointerException e) {
-            minecord.sendMessage(player, "&c Jucatorul nu este pe server-ul de Discord!");
-            minecord.error("Jucatorul nu este pe server-ul de Discord! Stack Trace:");
+            minecord.sendMessage(player, "&cPlayer is not found on &9Discord &cserver!");
+            minecord.error("Player is not found on Discord server! Stack Trace:");
             minecord.error(e.getMessage());
         }
-        minecord.sendMessage(player, "Verifica mesajele private pe Discord pentru a continua!");
+        minecord.sendMessage(player, "&fCheck your DM's on &9Discord &fto continue!");
     }
 
     public void unlink(Player player) {
         Database db = MinecordBridge.getDatabase();
         if (!db.doesEntryExist(player.getUniqueId())) {
-            minecord.sendMessage(player, "&cContul tau nu este verificat!");
+            minecord.sendMessage(player, "&fYour account is already &cunlinked&f!");
             return;
         }
         db.removeLink(player.getUniqueId());
-        minecord.sendMessage(player, "Contul a fost scos din verificare cu succes!");
+        minecord.sendMessage(player, "&fYour account is not &cunlinked&f!");
     }
 }

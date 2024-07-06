@@ -22,7 +22,7 @@ public class RoleAddListener implements UserRoleAddListener {
     private static Role addedRole;
     private TextChannel pmChannel;
     public static int i;
-
+    private static final int MAX_RETRIES = 3;
 
     public RoleAddListener(Role[] roles) {
         minecord = MinecordBridge.getPlugin();
@@ -53,15 +53,26 @@ public class RoleAddListener implements UserRoleAddListener {
 
         User user = roleEvent.getUser();
         if (i == 0) {
-            try {
-                new MessageBuilder()
-                        .append("Hmmm! :thinking: Am observat ca ai boostat server-ul nostru de discord! :rocket:")
-                        .append("\nEsti inregistrat pe server-ul nostru de minecraft? *(mc-1st.ro)* Raspunde scriind \"DA\" sau \"NU\".")
-                        .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
-            } catch (Exception e) {
-                minecord.error("Error sending message: " + user.getDiscriminatedName() + ". Stack Trace:");
-                minecord.error(e.getMessage());
+            boolean messageSent = false;
+            int attempt = 0;
+
+            while (!messageSent && attempt < MAX_RETRIES) {
+                try {
+                    new MessageBuilder()
+                            .append("Hmmm! :thinking: Am observat ca ai boostat server-ul nostru de discord! :rocket:")
+                            .append("\nEsti inregistrat pe server-ul nostru de minecraft? *(mc-1st.ro)* Raspunde scriind \"DA\" sau \"NU\".")
+                            .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
+                    messageSent = true;
+                } catch (Exception e) {
+                    attempt++;
+                    minecord.error("Error sending message: " + user.getDiscriminatedName() + ". Attempt " + attempt + ". Stack Trace:");
+                    minecord.error(e.getMessage());
+                    if (attempt >= MAX_RETRIES) {
+                        minecord.error("Failed to send message after " + MAX_RETRIES + " attempts.");
+                    }
+                }
             }
+
             user.addUserAttachableListener(new DMListener(addedRole, pmChannel));
             i++;
         }
