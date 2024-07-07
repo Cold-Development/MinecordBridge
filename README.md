@@ -1,6 +1,6 @@
 # MinecordBridge
 This is a plugin that can run commands on a Minecraft server when a specified role is given on a Discord server.
-Idea is to give rewards on your **Minecraft** server when a user gets a donation role on a Discord server, such as **Discord Nitro** or **Patreon**.
+Idea is to give rewards on your **Minecraft** server when a user gets a donation role on a Discord server, such as **Discord Nitro**, **Patreon** or anything you'd like.
 
 # Current Features
 
@@ -83,17 +83,15 @@ exampleRole2:
 
 # Commands
 `<>` = Required Argument
-`()` = Optional Argument
+`()` = Optional Argument ≠ not the case here
 
 - `/minecord reload` - Reloads the configuration file.
-- `/minecord link <Discord-username>` - Initiate the linking process.
-- `/minecord unlink` - Unlink your account from the Discord bot.
-- `/minecord retroLink (Discord-username) (role-name)` - Retroactively send link requests to all users in a role that existed before plugin installation (or if a role existed before being added as a rewarded role on Minecraft). Can also be done on a single player.
+- `/minecord unlink <discorduser#0> <role>` - Unlink your account from the Discord bot. Please note that you have to use Discord discriminator (#0) and role name is case-sensitive.
+- `/minecord retroLink <discorduser#0> <role>` - Send the initializing message to the specified user. Please note that you have to use Discord discriminator (#0) and role name is case-sensitive.
 
 # Permissions
 
 - `minecord.update` - Allows the user to be notified if there is a plugin update available.
-- `minecord.command.link` - Allows the user to use the `/minecord link` command.
-- `minecord.command.unlink` - Allows the user to use the `/minecord unlink` command.
+- `minecord.command.unlink` - Allows the user to use the `/minecord unlink` command. (DON'T GIVE ACCESS TO ANYONE TO THIS COMMAND BECAUSE THIS CAN UNLINK ANY USER THAT'S LINKED IN DATABASE)
 - `minecord.command.retroLink` - Allows the user to use the `/minecord retroLink` command.
 - `minecord.command.reload` - Allows the user to use the `/minecord reload` command.

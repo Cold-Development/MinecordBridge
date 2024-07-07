@@ -21,8 +21,6 @@ public class MCBTabComplete implements TabCompleter {
             case 1:
                 if (sender.hasPermission("minecord.update"))
                     tabs.add("reload");
-                if (sender.hasPermission("minecord.link"))
-                    tabs.add("link");
                 if (sender.hasPermission("minecord.unlink"))
                     tabs.add("unlink");
                 if (sender.hasPermission("minecord.retrolink"))

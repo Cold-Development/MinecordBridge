@@ -8,11 +8,15 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.javacord.api.entity.channel.TextChannel;
 import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.user.User;
 import org.jetbrains.annotations.NotNull;
+
+import java.util.List;
+import java.util.Set;
 
 public class MCBCommand implements CommandExecutor {
 
@@ -35,12 +39,8 @@ public class MCBCommand implements CommandExecutor {
                 } else if (args[0].equalsIgnoreCase("retrolink")) {
                     handleRetroLinkCommand(player, args);
                     return true;
-                } else if (args[0].equalsIgnoreCase("link")) {
-                    if (args.length == 1) return false;
-                    startLinking(player, args[1]);
-                    return true;
                 } else if (args[0].equalsIgnoreCase("unlink")) {
-                    unlink(player);
+                    handleUnlinkCommand(player, args);
                     return true;
                 } else {
                     minecord.sendMessage(player, "&cCommand not found!");
@@ -50,12 +50,10 @@ public class MCBCommand implements CommandExecutor {
                 if (args.length == 1) {
                     if (args[0].equalsIgnoreCase("reload")) {
                         minecord.reload();
+                        minecord.getLogger().info("Config reloaded!");
                         return true;
                     } else if (args[0].equalsIgnoreCase("retrolink")) {
                         js.retroLink();
-                        return true;
-                    } else if (args[0].equalsIgnoreCase("link")) {
-                        minecord.warn("Command can be used only by a player!");
                         return true;
                     } else {
                         minecord.warn("Command not found!");
@@ -104,6 +102,70 @@ public class MCBCommand implements CommandExecutor {
         }
     }
 
+    private void handleUnlinkCommand(Player player, String[] args) {
+        if (args.length < 3) {
+            minecord.sendMessage(player, "&fInvalid command usage. Use &c/minecord unlink <username#0> <role>");
+            return;
+        }
+
+        String discriminatedName = args[1];
+        String roleName = args[2];
+
+        if (!discriminatedName.contains("#")) {
+            minecord.sendMessage(player, "&cInvalid username format. &fPlease include a discriminator. &7(&fexample: &2user#0&7)");
+            return;
+        }
+
+        // Check if the role exists in the configuration
+        Set<String> roles = minecord.getConfig().getKeys(false);
+        if (!roles.contains(roleName)) {
+            minecord.sendMessage(player, "&cRole not found: " + roleName);
+            minecord.sendMessage(player, "Note that role names are case-sensitive.");
+            return;
+        }
+
+        try {
+            User user = js.api.getServerById(minecord.serverID).get().getMemberByDiscriminatedName(discriminatedName).orElse(null);
+            if (user == null) {
+                minecord.sendMessage(player, "&cPlayer not found on &9Discord&c server or discriminator is incorrect!");
+                return;
+            }
+
+            Database db = MinecordBridge.getDatabase();
+            if (!db.doesEntryExist(user.getId())) {
+                minecord.sendMessage(player, "&cNo linked account found for this &9Discord&f user!");
+                return;
+            }
+
+            executeRemoveCommands(player, roleName);
+            db.removeLink(user.getId());
+
+            minecord.sendMessage(player, "&fUser's account is now &cunlinked&f and benefits are removed!");
+        } catch (Exception e) {
+            minecord.sendMessage(player, "&cError unlinking user: " + e.getMessage());
+            e.printStackTrace();
+        }
+    }
+
+    private void executeRemoveCommands(Player player, String roleName) {
+        ConfigurationSection roleSection = minecord.getConfig().getConfigurationSection(roleName);
+        if (roleSection == null) {
+            minecord.warn("Role not found in configuration: " + roleName);
+            return;
+        }
+        List<String> commands = roleSection.getStringList("remove-commands");
+        if (commands == null || commands.isEmpty()) {
+            minecord.warn("No remove-commands found for role: " + roleName);
+        } else {
+            for (String command : commands) {
+                // Replace placeholders in the command
+                String formattedCommand = command.replace("%user%", player.getName());
+                //minecord.log("Executing command: " + formattedCommand);
+                minecord.getServer().dispatchCommand(minecord.getServer().getConsoleSender(), formattedCommand);
+            }
+        }
+    }
+
     private void startLinking(Player player, String discName) {
         Database db = MinecordBridge.getDatabase();
         if (db.doesEntryExist(player.getUniqueId())) {
@@ -140,15 +202,5 @@ public class MCBCommand implements CommandExecutor {
             minecord.error(e.getMessage());
         }
         minecord.sendMessage(player, "&fCheck your DM's on &9Discord &fto continue!");
-    }
-
-    public void unlink(Player player) {
-        Database db = MinecordBridge.getDatabase();
-        if (!db.doesEntryExist(player.getUniqueId())) {
-            minecord.sendMessage(player, "&fYour account is already &cunlinked&f!");
-            return;
-        }
-        db.removeLink(player.getUniqueId());
-        minecord.sendMessage(player, "&fYour account is not &cunlinked&f!");
     }
 }

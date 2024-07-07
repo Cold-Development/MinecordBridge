@@ -9,7 +9,7 @@ commands:
     description: MinecordBridge Command
     usage: /minecord (command) [arg1] [arg2]...
     permission: minecord.main
-    permission-message: §8「§c1st§8§7»§f Nu ai permisiunea de a face asta!
+    permission-message: You don't have permission to do that!
 
 permissions:
   minecord.*:
@@ -19,7 +19,6 @@ permissions:
       minecord.update: true
       minecord.command.reload: true
       minecord.command.retrolink: true
-      minecord.command.link: true
   minecord.command.reload:
     description: Can reload the plugin.
     default: op
@@ -28,7 +27,4 @@ permissions:
     default: op
   minecord.command.retrolink:
     description: Send retroactive message to all users that have the roles mentioned in the config.yml file.
-    default: op
-  minecord.command.link:
-    description: Allow users to use "/minecord link" command.
     default: op
