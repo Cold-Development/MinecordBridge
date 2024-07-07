@@ -86,7 +86,7 @@ exampleRole2:
 `()` = Optional Argument ≠ not the case here
 
 - `/minecord reload` - Reloads the configuration file.
-- `/minecord unlink <discorduser#0> <role>` - Unlink your account from the Discord bot. Please note that you have to use Discord discriminator (#0) and role name is case-sensitive.
+- `/minecord unlink <discorduser#0> <role>` - Unlink your account from the Discord bot. Please note that you have to use Discord discriminator (#0) and role name is case-sensitive. Also this command will work properly with one Role Rewards setup from config.yml (If you have 2 or more, when unlinking the user, will be erased completely from database and benefits from other role _if its the case_ will remain.)
 - `/minecord retroLink <discorduser#0> <role>` - Send the initializing message to the specified user. Please note that you have to use Discord discriminator (#0) and role name is case-sensitive.
 
 # Permissions
