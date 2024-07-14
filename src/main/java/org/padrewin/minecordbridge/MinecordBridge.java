@@ -76,6 +76,10 @@ public class MinecordBridge extends JavaPlugin {
     @Override
     public void onEnable() {
 
+        getLogger().info(ANSI_GREEN + "-----MinecordBridge-----" + ANSI_RESET);
+        getLogger().info(ANSI_YELLOW + "Starting plugin.." + ANSI_RESET);
+        getLogger().info(ANSI_YELLOW + "Version:"+ Bukkit.getVersion() + ANSI_RESET);
+
         /* Load Dependencies */
         LibrarySetup librarySetup = new LibrarySetup();
         librarySetup.loadLibraries();
