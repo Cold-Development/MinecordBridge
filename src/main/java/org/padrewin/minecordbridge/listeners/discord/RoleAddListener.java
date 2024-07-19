@@ -110,6 +110,9 @@ public class RoleAddListener implements UserRoleAddListener {
                 minecord.error(e.getMessage());
             }
         }
+
+        minecord.log(username + " now has benefits from role " + roleName + ".");
+
     }
 
 }

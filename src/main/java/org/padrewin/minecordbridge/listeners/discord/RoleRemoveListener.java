@@ -2,6 +2,8 @@ package org.padrewin.minecordbridge.listeners.discord;
 
 import org.padrewin.minecordbridge.MinecordBridge;
 import org.padrewin.minecordbridge.database.Database;
+import org.bukkit.Bukkit;
+import org.bukkit.command.ConsoleCommandSender;
 import org.javacord.api.entity.permission.Role;
 import org.javacord.api.event.server.role.UserRoleRemoveEvent;
 import org.javacord.api.listener.server.role.UserRoleRemoveListener;
@@ -25,7 +27,6 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
 
     @Override
     public void onUserRoleRemove(UserRoleRemoveEvent roleEvent) {
-
         int rolesChanged = 0;
 
         username = db.getUsername(roleEvent.getUser().getId());
@@ -41,15 +42,43 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
 
         try {
             db.removeLink(roleEvent.getUser().getId());
-            runCommands(roleEvent.getRole());
+
+            // Log before running remove commands
+            minecord.log(roleEvent.getUser().getDiscriminatedName() + " has lost benefits from role " + roleEvent.getRole().getName() + ".");
+
+            runRemoveCommands(roleEvent.getRole());
+
         } catch (Exception e) {
             minecord.error("Error removing roles: " + username + ". Stack Trace:");
             minecord.error(e.getMessage());
         }
     }
 
-    private void runCommands(Role role) {
-        RoleAddListener.runCommands(minecord, roleNames, removeCommands, role, username);
-    }
+    private void runRemoveCommands(Role role) {
+        ConsoleCommandSender console = minecord.getServer().getConsoleSender();
 
+        String roleName = "";
+        for (String name : roleNames) {
+            if (name.equalsIgnoreCase(role.getName())) {
+                roleName = name;
+                break;
+            }
+        }
+
+        String[] cmds = removeCommands.get(roleName);
+
+        for (String cmdSend : cmds) {
+            if (cmdSend.contains("%user%")) {
+                cmdSend = cmdSend.replace("%user%", username);
+            }
+
+            try {
+                String finalCmdSend = cmdSend;
+                Bukkit.getScheduler().callSyncMethod(minecord, () -> Bukkit.dispatchCommand(console, finalCmdSend)).get();
+            } catch (Exception e) {
+                minecord.error("Error executing command: " + cmdSend + ". Stack Trace:");
+                minecord.error(e.getMessage());
+            }
+        }
+    }
 }
