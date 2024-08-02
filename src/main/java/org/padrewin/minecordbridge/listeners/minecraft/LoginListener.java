@@ -31,10 +31,11 @@ public final class LoginListener implements Listener {
 
         /* Check for Updates and send message to player with permission to see updates */
         if (updateRequired && (event.getPlayer().hasPermission("minecord.update") || event.getPlayer().isOp())) {
-            event.getPlayer().sendMessage("Version &c" + versions[0] + "&favailable! Actual version: &c" + versions[1] + ".");
+            String updateMessage = minecord.pluginTag + "&7Version &#FF0000" + versions[0] + "&#FFFFFF available&7! Actual version: &#FF0000" + versions[1] + "&7.";
+            event.getPlayer().sendMessage(minecord.applyHexColors(updateMessage));
 
-            minecord.log("Version " + versions[0] + " available! Actual version " + versions[1] + ".");
-
+            String logMessage = "Version " + versions[0] + " available! Actual version " + versions[1] + ".";
+            minecord.log(logMessage);
         }
 
         /* Check if Username has changed since last login */
