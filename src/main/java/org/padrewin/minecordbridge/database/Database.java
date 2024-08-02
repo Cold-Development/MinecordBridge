@@ -1,7 +1,7 @@
 package org.padrewin.minecordbridge.database;
 
-import org.padrewin.minecordbridge.MinecordBridge;
 import org.bukkit.plugin.Plugin;
+import org.padrewin.minecordbridge.MinecordBridge;
 
 import java.sql.*;
 import java.util.ArrayList;
@@ -11,9 +11,7 @@ import java.util.UUID;
 
 /**
  * Database manager class with specific pull/push methods for a sqlite database
- * @author padrewin
  */
-
 public class Database {
 
     private String dbPath;
@@ -172,8 +170,12 @@ public class Database {
         try {
             PreparedStatement stmt = dbcon.prepareStatement("DELETE FROM link WHERE discordid=?");
             stmt.setString(1, Long.toString(discordID));
-            stmt.execute();
-
+            int rowsAffected = stmt.executeUpdate();
+            if (rowsAffected == 0) {
+                minecord.warn("No entry found in database for Discord ID: " + discordID);
+            } else {
+                //minecord.log("Removed link for Discord ID: " + discordID);
+            }
         } catch (SQLException e) {
             minecord.error("Error removing link from database! Stack Trace:");
             minecord.error(e.getMessage());
@@ -184,8 +186,12 @@ public class Database {
         try {
             PreparedStatement stmt = dbcon.prepareStatement("DELETE FROM link WHERE minecraftid=?");
             stmt.setString(1, minecraftID.toString());
-            stmt.execute();
-
+            int rowsAffected = stmt.executeUpdate();
+            if (rowsAffected == 0) {
+                minecord.warn("No entry found in database for Minecraft ID: " + minecraftID);
+            } else {
+                //minecord.log("Removed link for Minecraft ID: " + minecraftID);
+            }
         } catch (SQLException e) {
             minecord.error("Error removing link from database! Stack Trace:");
             minecord.error(e.getMessage());
@@ -243,5 +249,32 @@ public class Database {
     }
 
     public void close() {
+        try {
+            if (dbcon != null && !dbcon.isClosed()) {
+                dbcon.close();
+            }
+        } catch (SQLException e) {
+            minecord.error("Error closing the database connection: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Retrieves all linked users from the database.
+     * @return List of UUIDs of all linked users.
+     */
+    public List<UUID> getAllLinkedUsers() {
+        List<UUID> linkedUsers = new ArrayList<>();
+        try {
+            PreparedStatement stmt = dbcon.prepareStatement("SELECT minecraftid FROM link");
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                linkedUsers.add(UUID.fromString(rs.getString("minecraftid")));
+            }
+        } catch (SQLException e) {
+            minecord.error("Error retrieving all linked users from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return linkedUsers;
     }
 }

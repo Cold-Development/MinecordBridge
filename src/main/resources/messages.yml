@@ -1,0 +1,44 @@
+# Pay close attention! This config you'll find my actual server name "mc-1st.ro". Chage it to your Minecraft server name.
+# Auto role messages. Those messages appear in the user's Discord DM with your Bot in order to link his account and get the rewards. Or maybe cancel the process.
+Auto-Role:
+  boost_message: "Hmmm! :thinking: I noticed that you boosted our Discord server! :rocket:"
+  registration_question: "Are you registered on our Minecraft server? *(mc-1st.ro)* Reply by writing \"YES\" or \"NO\"."
+  dm_instructions: "__**Follow these instructions:**__\n:one: Connect to **/lobby** on the **mc-1st.ro** server using the account you want to claim rewards for.\n:two: Write your Minecraft account name in this DM. __(the name must be exact)__\n:three: Enter the code received in the Minecraft chat in this DM.\n:four: Enjoy the benefits! :tada:"
+  dm_enter_minecraft_name: "To start, enter your Minecraft name. __(the name must be exact)__"
+  dm_thank_you: "In this case, we cannot reward you, but we still thank you for your support! :heart:"
+  dm_retry_code: "Enter the code sent in the Minecraft chat. Type \"resend\" if you need a new code!"
+  dm_not_connected: "You are not connected in **/lobby** on the **mc-1st.ro** Minecraft server! Make sure you have typed your name correctly."
+  dm_player_not_found: "Player not found! Make sure you are connected in **/lobby** on the server and have written your name correctly!"
+  dm_rewarded: "You have been rewarded, thank you for your support! :heart:"
+  dm_code_mismatch: "The code entered does not match. Type \"resend\" if you want to receive a new code."
+  dm_something_wrong: "Something went wrong, contact one of the Owners. :angry:"
+  dm_cancelled: "You have canceled the verification process."
+  dm_new_code_sent: "A new code has been sent. Enter the code sent in the Minecraft chat."
+  dm_new_code_not_possible: "You cannot send a new code at this time."
+
+# Player facing messages. Those messages can be seen by the player in his Minecraft chat.
+Player-facing-messages:
+  rewarded: "You have been rewarded!"
+  new_code: "The new code is: §4%code%"
+  your_code: "Your code is: §4%code%"
+
+# Commands messages. Those messages are ok to be left in English since you're the only one who is viewing this.
+Commands:
+  reload_success: "&fConfig &2reloaded&f!"
+  command_not_found: "&cCommand not found!"
+  invalid_usage_retrolink: "&fInvalid command usage. Use &c/minecord retrolink <username#0> <role>"
+  role_mandatory: "&cRole is mandatory. &fPlease specify a role. &7(&fexample: &2Nitro&7)"
+  invalid_username_format: "&cInvalid username format. &fPlease include a discriminator. &7(&fexample: &2user#0&7)"
+  instructions_sent: "&fInstructions sent &2successfully&f."
+  error_linking_user: "&cError linking user: "
+  invalid_usage_unlink: "&fInvalid command usage. Use &c/minecord unlink <username#0> <role>"
+  role_not_found: "&cRole not found: "
+  note_case_sensitive: "Note that role names are case-sensitive."
+  player_not_found_discord: "&cPlayer not found on &9Discord&c server or discriminator is incorrect!"
+  no_linked_account: "&cNo linked account found for this &9Discord&f user!"
+  no_minecraft_username: "&cNo Minecraft username linked for this Discord user!"
+  account_unlinked: "&fUser's account is now &cunlinked&f and benefits are removed!"
+  account_already_linked: "&fAccount already &2linked&f!"
+  player_not_found_discord_simple: "&cPlayer is not found on &9Discord &cserver or discriminator is not found!"
+  linking_dm: "You are attempting to link your Discord and Minecraft accounts.\nAnswer with \"**YES**\" to continue or \"**NO**\" if you think this was an error."
+  check_dm: "&fCheck your DM's on &9Discord &fto continue!"

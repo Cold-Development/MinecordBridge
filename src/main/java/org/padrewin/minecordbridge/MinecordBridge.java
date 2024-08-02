@@ -1,7 +1,21 @@
 package org.padrewin.minecordbridge;
 
 import io.papermc.paper.event.player.AsyncChatEvent;
+import net.luckperms.api.LuckPerms;
+import net.md_5.bungee.api.ChatColor;
+import org.bukkit.Bukkit;
+import org.bukkit.command.CommandSender;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+import org.bukkit.event.HandlerList;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.plugin.Plugin;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.plugin.RegisteredServiceProvider;
+import org.bukkit.plugin.java.JavaPlugin;
+import org.javacord.api.DiscordApi;
 import org.padrewin.minecordbridge.commands.MCBCommand;
 import org.padrewin.minecordbridge.commands.tabcomplete.MCBTabComplete;
 import org.padrewin.minecordbridge.database.Database;
@@ -10,18 +24,6 @@ import org.padrewin.minecordbridge.lib.LibrarySetup;
 import org.padrewin.minecordbridge.listeners.minecraft.ChatListener;
 import org.padrewin.minecordbridge.listeners.minecraft.LoginListener;
 import org.padrewin.minecordbridge.listeners.minecraft.LogoutListener;
-import net.luckperms.api.LuckPerms;
-import org.bukkit.Bukkit;
-import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.file.FileConfiguration;
-import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.event.HandlerList;
-import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
-import org.bukkit.plugin.Plugin;
-import org.bukkit.plugin.PluginManager;
-import org.bukkit.plugin.RegisteredServiceProvider;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
@@ -29,9 +31,10 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Objects;
+import java.util.*;
 import java.util.logging.Level;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class MinecordBridge extends JavaPlugin {
 
@@ -56,6 +59,18 @@ public class MinecordBridge extends JavaPlugin {
     public String chatStreamID;
     public String chatStreamMessageFormat;
     public boolean useChatStream;
+    private List<String> rolesParsed = new ArrayList<>();
+    public String pluginTag;
+
+    private DiscordApi discordApi;
+    // ANSI escape codes for colors
+    public static final String ANSI_RESET = "\u001B[0m";
+    public static final String ANSI_GREEN = "\u001B[32m";
+    public static final String ANSI_RED = "\u001B[31m";
+    public static final String ANSI_YELLOW = "\u001B[33m";
+
+    private FileConfiguration messagesConfig = null;
+    private File messagesFile = null;
 
     public static MinecordBridge getPlugin() {
         return getPlugin(MinecordBridge.class);
@@ -63,6 +78,18 @@ public class MinecordBridge extends JavaPlugin {
 
     @Override
     public void onEnable() {
+
+        String name = getDescription().getName();
+        getLogger().info("");
+        getLogger().info("  ____ ___  _     ____  ");
+        getLogger().info(" / ___/ _ \\| |   |  _ \\ ");
+        getLogger().info("| |  | | | | |   | | | |");
+        getLogger().info("| |__| |_| | |___| |_| |");
+        getLogger().info(" \\____\\___/|_____|____/");
+        getLogger().info("    " + name + " v" + getDescription().getVersion());
+        getLogger().info("    Author(s): " + (String)getDescription().getAuthors().get(0));
+        getLogger().info("    (c) Cold Development. All rights reserved.");
+        getLogger().info("");
 
         /* Load Dependencies */
         LibrarySetup librarySetup = new LibrarySetup();
@@ -81,7 +108,7 @@ public class MinecordBridge extends JavaPlugin {
         /* Load the Database */
         try {
             db = new Database("minecord.sqlite.db");
-            log("Database Found! Path is " + db.getDbPath());
+            log(ANSI_GREEN + "Database Found! Path is " + ANSI_YELLOW + db.getDbPath() + ANSI_RESET);
         } catch (SQLException e) {
             error("Error setting up database! Is there permissions issue preventing the database file creation?");
             error("Exception Message:" + e.getMessage());
@@ -95,7 +122,7 @@ public class MinecordBridge extends JavaPlugin {
             js = new JavacordHelper(roleNames);
             initListeners();
         } else {
-            error("Config Not Properly Configured! Plugin will not function!");
+            error("Config not properly configured! Plugin will not function!");
         }
 
         /* Get the Plugin manager for finding other permissions plugins */
@@ -114,6 +141,10 @@ public class MinecordBridge extends JavaPlugin {
         if (useChatStream) {
             ChatListener.sendServerStartMessage();
         }
+
+        // Load messages.yml
+        saveDefaultMessagesConfig();
+        loadMessagesConfig();
     }
 
     @Override
@@ -124,6 +155,7 @@ public class MinecordBridge extends JavaPlugin {
 
         if (js != null) {
             js.disableAPI();
+            getLogger().info("API closed.");
         }
 
         // Unregister all listeners
@@ -132,6 +164,12 @@ public class MinecordBridge extends JavaPlugin {
         // Close the database connection
         if (db != null) {
             db.close(); // Remove try-catch if SQLException is not thrown
+
+            // Close the Discord API connection gracefully
+            if (discordApi != null) {
+                discordApi.disconnect().join();
+                getLogger().info("Discord API closed.");
+            }
         }
     }
 
@@ -139,6 +177,8 @@ public class MinecordBridge extends JavaPlugin {
         reloadCustomConfig();
         config = getCustomConfig();
         saveCustomConfig();
+
+        loadMessagesConfig();
 
         PlayerJoinEvent.getHandlerList().unregister(this);
         if (useChatStream) {
@@ -148,8 +188,11 @@ public class MinecordBridge extends JavaPlugin {
 
         /* Reload database if it's gone */
         try {
-            if (!db.testConnection())
-                if (db.getDbPath().isEmpty() || db.getDbPath().isBlank() || db.getDbPath() == null) new Database("minecord.sqlite.db");
+            if (!db.testConnection()) {
+                if (db.getDbPath().isEmpty() || db.getDbPath().isBlank() || db.getDbPath() == null) {
+                    db = new Database("minecord.sqlite.db");
+                }
+            }
         } catch (SQLException e) {
             error("Error setting up database! Is there permissions issue preventing the database file creation? View the following error message:");
             error("Error Message: " + e.getMessage());
@@ -161,20 +204,20 @@ public class MinecordBridge extends JavaPlugin {
             initListeners();
             initChatStream();
         } else {
-            error("Config Not Properly Configured! Plugin will not function!");
+            error("Config not properly configured! Plugin will not function properly!");
             return;
         }
 
         if (js == null) {
             js = new JavacordHelper(roleNames);
         } else {
-            js.reload();
+            js.reload(); // Ensure roles are reloaded in JavacordHelper
         }
     }
 
     public void initListeners() {
         try {
-            new UpdateChecker(this, 88409).getVersion(version -> {
+            new UpdateChecker(this, 118054).getVersion(version -> {
                 // Initializes Login Listener when no Updates
                 if (compareVersions(this.getPluginMeta().getVersion(), version) < 0) {
                     versions[0] = version;
@@ -188,7 +231,7 @@ public class MinecordBridge extends JavaPlugin {
             error("Error initializing Update Checker! Contact the developer if you cannot fix this issue. Stack Trace:");
             error(e.getMessage());
         }
-        log("Minecraft Listeners Loaded!");
+        log("Minecraft listeners loaded!");
     }
 
     public boolean parseConfig() {
@@ -204,16 +247,24 @@ public class MinecordBridge extends JavaPlugin {
         try {
             serverID = getConfigString("server-id");
             if (getConfigString("server-id").equalsIgnoreCase("000000000000000000") || getConfigString("server-id").equalsIgnoreCase("")) throw new Exception();
-            log("Discord Server Found!");
+            log("Discord server found!");
         } catch (Exception e) {
             saveDefaultConfig();
-            warn("Invalid Server ID! Please enter a valid Server ID in config.yml and reload the plugin.");
+            warn("Invalid server ID! Please enter a valid server ID in config.yml and reload the plugin.");
             return false;
+        }
+
+        // Load plugin-tag from config
+        pluginTag = applyHexColors(getConfigString("plugin-tag"));
+        if (pluginTag == null || pluginTag.isEmpty()) {
+            pluginTag = "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f "; // Default value if not set in config
+        } else {
+            pluginTag = applyHexColors(pluginTag); // Apply hex colors if pluginTag is set in config
         }
 
         changeNickOnLink = getConfigBool("change-nickname-on-link");
 
-        log("Config Loaded!");
+        log("Config loaded!");
         return true;
     }
 
@@ -237,7 +288,7 @@ public class MinecordBridge extends JavaPlugin {
                     }
                     useLuckPerms = true;
                     usePex = false;
-                    log("LuckPerms Detected! Hooking Permissions");
+                    log("LuckPerms detected! Hooking permissions");
                 }
             } catch (AssertionError | NullPointerException f) {
                 log("No permissions plugin found!");
@@ -248,25 +299,37 @@ public class MinecordBridge extends JavaPlugin {
 
     private void parseRoles() {
         try {
-            roleNames = new String[config.getStringList("roles").size()];
+            // Clear existing role data
+            addCommands.clear();
+            removeCommands.clear();
+            roleAndID.clear();
 
-            roleNames = config.getStringList("roles").toArray(roleNames);
+            roleNames = config.getStringList("roles").toArray(new String[0]);
 
             for (String roleName : roleNames) {
-                String[] tempAdd = new String[config.getStringList(roleName + ".add-commands").size()];
-                tempAdd = config.getStringList(roleName + ".add-commands").toArray(tempAdd);
+                String[] tempAdd = config.getStringList(roleName + ".add-commands").toArray(new String[0]);
                 addCommands.put(roleName, tempAdd);
 
-                String[] tempRemove = new String[config.getStringList(roleName + ".remove-commands").size()];
-                tempRemove = config.getStringList(roleName + ".remove-commands").toArray(tempRemove);
+                String[] tempRemove = config.getStringList(roleName + ".remove-commands").toArray(new String[0]);
                 removeCommands.put(roleName, tempRemove);
 
                 roleAndID.put(roleName, Objects.requireNonNull(config.getConfigurationSection(roleName)).getString("role-id"));
             }
+
+            // Actualizăm lista de roluri procesate
+            rolesParsed = Arrays.asList(roleNames);
+
+            //log(ANSI_GREEN + "Roles parsed: " + String.join(", ", roleNames) + ANSI_RESET);
         } catch (Exception e) {
             saveDefaultConfig();
             error("Error parsing roles! Make sure the config.yml is correct and reload the plugin. Stack Trace:");
+            error(e.getMessage());
         }
+    }
+
+    // Getter pentru rolurile procesate
+    public List<String> getRolesParsed() {
+        return rolesParsed;
     }
 
     public void initChatStream() {
@@ -275,10 +338,10 @@ public class MinecordBridge extends JavaPlugin {
         log("ChatStream enabled! Loading necessary config items");
         try {
             chatStreamID = getConfigString("chatstream-channel");
-            chatStreamMessageFormat = replaceColors(getConfigString("chatstream-message-format"));
+            chatStreamMessageFormat = applyHexColors(getConfigString("chatstream-message-format"));
         } catch (Exception e) {
             saveDefaultConfig();
-            warn("Invalid Channel ID for ChatStream! Please enter a valid Channel ID in the config.yml and reload the plugin.");
+            warn("Invalid channel ID for ChatStream! Please enter a valid channel ID in the config.yml and reload the plugin.");
         }
         getServer().getPluginManager().registerEvents(new LogoutListener(), this);
         getServer().getPluginManager().registerEvents(new ChatListener(), this);
@@ -342,6 +405,36 @@ public class MinecordBridge extends JavaPlugin {
         }
     }
 
+    public void saveDefaultMessagesConfig() {
+        if (messagesFile == null) {
+            messagesFile = new File(getDataFolder(), "messages.yml");
+        }
+        if (!messagesFile.exists()) {
+            saveResource("messages.yml", false);
+        }
+    }
+
+    public void loadMessagesConfig() {
+        if (messagesFile == null) {
+            messagesFile = new File(getDataFolder(), "messages.yml");
+        }
+        messagesConfig = YamlConfiguration.loadConfiguration(messagesFile);
+
+    }
+
+    public String getMessage(String key) {
+        if (messagesConfig == null) {
+            loadMessagesConfig();
+        }
+
+        String message = messagesConfig.getString(key);
+        if (message == null) {
+            return "No message found: " + key;
+        }
+
+        return message;
+    }
+
     public void log(String message) {
         this.getLogger().log(Level.INFO, message);
     }
@@ -358,9 +451,10 @@ public class MinecordBridge extends JavaPlugin {
         this.getLogger().log(Level.FINE, message);
     }
 
-    public void sendMessage(CommandSender sender, String message) {
+    public void sendMessage(CommandSender sender, String messageKey) {
+        String message = getMessage(messageKey);
         if (sender instanceof Player player) {
-            player.sendMessage("§8「§c1st§8」§7»§f " + replaceColors(message));
+            player.sendMessage(applyHexColors(pluginTag) + applyHexColors(message));
         } else {
             log(message);
         }
@@ -393,45 +487,18 @@ public class MinecordBridge extends JavaPlugin {
         }
     }
 
-    /**
-     * The escape sequence for minecraft special chat codes
-     */
-    public static final char ESCAPE = '§';
+    public String applyHexColors(String message) {
+        Pattern hexPattern = Pattern.compile("&#([A-Fa-f0-9]{6})");
+        Matcher matcher = hexPattern.matcher(message);
+        StringBuffer buffer = new StringBuffer(message.length());
 
-    /**
-     * Replace all the color codes (prepended with &) with the corresponding color code.
-     * This uses raw char arrays, so it can be considered to be extremely fast.
-     *
-     * @param text the text to replace the color codes in
-     * @return string with color codes replaced
-     */
-    public static String replaceColors(String text) {
-        char[] chrarray = text.toCharArray();
-
-        for (int index = 0; index < chrarray.length; index ++) {
-            char chr = chrarray[index];
-
-            // Ignore anything that we don't want
-            if (chr != '&') {
-                continue;
-            }
-
-            if ((index + 1) == chrarray.length) {
-                // we are at the end of the array
-                break;
-            }
-
-            // get the forward char
-            char forward = chrarray[index + 1];
-
-            // is it in range?
-            if ((forward >= '0' && forward <= '9') || (forward >= 'a' && forward <= 'f') || (forward >= 'k' && forward <= 'r')) {
-                // It is! Replace the char we are at now with the escape sequence
-                chrarray[index] = ESCAPE;
-            }
+        while (matcher.find()) {
+            String hexColor = matcher.group(1);
+            String replacement = ChatColor.of("#" + hexColor).toString();
+            matcher.appendReplacement(buffer, replacement);
         }
 
-        // Rebuild the string and return it
-        return new String(chrarray);
+        matcher.appendTail(buffer);
+        return ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
 }

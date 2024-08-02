@@ -3,6 +3,9 @@
 # Author: padrewin
 #################################################
 
+# Plugin tag configuration
+plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
+
 debug: false # If set to true, it will enable debug mode for detailed logging.
 
 # Discord bot token
@@ -17,24 +20,14 @@ change-nickanme-on-link: false # If set to true, the bot will change the user's 
 # Settings for chat stream (ChatStream)
 enable-chatstream: false # If set to true, messages from Minecraft will be sent to a specific Discord channel.
 chatstream-channel: "CHANNEL_ID" # The ID of the Discord channel where Minecraft chat messages will be sent. Replace "CHANNEL_ID" with the actual channel ID.
-chatstream-message-format: "§f[§9Discord§f]%USER%: %MESSAGE%" # The format of messages sent to the Discord channel. You can customize the format as you wish.
+chatstream-message-format: "&f[&9Discord&f]%USER%: %MESSAGE%" # The format of messages sent to the Discord channel. You can customize the format as you wish.
 chatstream-use-permission-groups: false # If set to true, it will use permission groups to filter messages.
 
 # Roles configuration
 roles:
-  - exampleRole1
-  - exampleRole2
+  - exampleRole
 
-exampleRole1:
-  role-id: "ROLE_ID" # The ID of the role. Replace "ROLE_ID" with the actual role ID.
-  add-commands: # Commands to execute when the role is added
-    - example command 1
-    - example command 2
-  remove-commands: # Commands to execute when the role is removed
-    - example command 1
-    - example command 2
-
-exampleRole2:
+exampleRole:
   role-id: "ROLE_ID" # The ID of the role. Replace "ROLE_ID" with the actual role ID.
   add-commands: # Commands to execute when the role is added
     - example command 1

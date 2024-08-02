@@ -1,15 +1,14 @@
 package org.padrewin.minecordbridge.listeners.discord;
 
-import org.padrewin.minecordbridge.javacord.JavacordHelper;
-import org.padrewin.minecordbridge.MinecordBridge;
-import org.padrewin.minecordbridge.database.Database;
 import net.kyori.adventure.text.Component;
+import net.luckperms.api.LuckPerms;
 import org.bukkit.entity.Player;
 import org.javacord.api.entity.user.User;
 import org.javacord.api.event.message.MessageCreateEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
-
-import net.luckperms.api.*;
+import org.padrewin.minecordbridge.MinecordBridge;
+import org.padrewin.minecordbridge.database.Database;
+import org.padrewin.minecordbridge.javacord.JavacordHelper;
 
 public class DiscordMessageListener implements MessageCreateListener {
 

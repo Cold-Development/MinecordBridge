@@ -1,7 +1,5 @@
 package org.padrewin.minecordbridge.listeners.discord;
 
-import org.padrewin.minecordbridge.MinecordBridge;
-import org.padrewin.minecordbridge.database.Database;
 import org.bukkit.Bukkit;
 import org.bukkit.command.ConsoleCommandSender;
 import org.javacord.api.entity.channel.TextChannel;
@@ -11,6 +9,8 @@ import org.javacord.api.entity.user.User;
 import org.javacord.api.event.server.role.UserRoleAddEvent;
 import org.javacord.api.listener.message.MessageCreateListener;
 import org.javacord.api.listener.server.role.UserRoleAddListener;
+import org.padrewin.minecordbridge.MinecordBridge;
+import org.padrewin.minecordbridge.database.Database;
 
 import java.util.HashMap;
 
@@ -22,7 +22,7 @@ public class RoleAddListener implements UserRoleAddListener {
     private static Role addedRole;
     private TextChannel pmChannel;
     public static int i;
-
+    private static final int MAX_RETRIES = 3;
 
     public RoleAddListener(Role[] roles) {
         minecord = MinecordBridge.getPlugin();
@@ -53,15 +53,27 @@ public class RoleAddListener implements UserRoleAddListener {
 
         User user = roleEvent.getUser();
         if (i == 0) {
-            try {
-                new MessageBuilder()
-                        .append("Hmmm! :thinking: Am observat ca ai boostat server-ul nostru de discord! :rocket:")
-                        .append("\nEsti inregistrat pe server-ul nostru de minecraft? *(mc-1st.ro)* Raspunde scriind \"DA\" sau \"NU\".")
-                        .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
-            } catch (Exception e) {
-                minecord.error("Error sending message: " + user.getDiscriminatedName() + ". Stack Trace:");
-                minecord.error(e.getMessage());
+            boolean messageSent = false;
+            int attempt = 0;
+
+            while (!messageSent && attempt < MAX_RETRIES) {
+                try {
+                    new MessageBuilder()
+                            .append(minecord.getMessage("Auto-Role.boost_message"))
+                            .append("\n")
+                            .append(minecord.getMessage("Auto-Role.registration_question"))
+                            .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
+                    messageSent = true;
+                } catch (Exception e) {
+                    attempt++;
+                    minecord.error("Error sending message: " + user.getDiscriminatedName() + ". Attempt " + attempt + ". Stack Trace:");
+                    minecord.error(e.getMessage());
+                    if (attempt >= MAX_RETRIES) {
+                        minecord.error("Failed to send message after " + MAX_RETRIES + " attempts.");
+                    }
+                }
             }
+
             user.addUserAttachableListener(new DMListener(addedRole, pmChannel));
             i++;
         }
@@ -99,6 +111,9 @@ public class RoleAddListener implements UserRoleAddListener {
                 minecord.error(e.getMessage());
             }
         }
+
+        minecord.log(username + " now has benefits from role " + roleName + ".");
+
     }
 
 }
