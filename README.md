@@ -136,3 +136,4 @@ Commands:
 - Easy Administration: Simplifies managing the community across both platforms.
 - Fully Customizable: Offers flexibility with message customization and plugin behavior.
 - This plugin is perfect for Minecraft servers looking to incentivize Discord Nitro boosts by providing tangible in-game rewards, thereby enhancing player engagement and community building.
+- 
