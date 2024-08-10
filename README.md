@@ -22,10 +22,13 @@ Simply define how many roles you would like to have in the "roles:" category, th
 # Config file
 
 ```yml
-#################################################
-# Main configuration for MinecordBridge
-# Author: padrewin
-#################################################
+#########################################################################################################
+#    Plugin now supports full hex color codes.                                                          #
+#    You can use https://www.birdflop.com/resources/rgb/ to create your colors                          #
+#    Developer; padrewin || Cold Development                                                            #
+#    GitHub; https://github.com/padrewin || https://github.com/Cold-Development                         #
+#    Links: https://colddev.dev || https://discord.colddev.dev                                          #
+#########################################################################################################
 
 # Plugin tag configuration
 plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
@@ -59,7 +62,6 @@ exampleRole:
   remove-commands: # Commands to execute when the role is removed
     - example command 1
     - example command 2
-
 ```
 
 # Messages file
