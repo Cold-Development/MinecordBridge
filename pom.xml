@@ -91,7 +91,7 @@
 
     <build>
         <defaultGoal>clean package</defaultGoal>
-        <finalName>MinecordBridge ${project.version}</finalName>
+        <finalName>MinecordBridge-${project.version}</finalName>
         <sourceDirectory>${basedir}/src/main/java</sourceDirectory>
         <resources>
             <resource>
