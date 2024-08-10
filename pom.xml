@@ -6,7 +6,11 @@
 
     <groupId>org.padrewin</groupId>
     <artifactId>MinecordBridge</artifactId>
+<<<<<<< Updated upstream
     <version>1.1</version>
+=======
+    <version>1.0</version>
+>>>>>>> Stashed changes
     <packaging>jar</packaging>
 
     <name>MinecordBridge</name>

@@ -1,7 +1,16 @@
-#################################################
-# Main configuration for MinecordBridge
-# Author: padrewin
-#################################################
+#########################################################################################################
+#    Plugin now supports full hex color codes.                                                          #
+#    You can use https://www.birdflop.com/resources/rgb/ to create your colors                          #
+#    Developer; padrewin || Cold Development                                                            #
+#    GitHub; https://github.com/padrewin || https://github.com/Cold-Development                         #
+#    Links: https://colddev.dev || https://discord.colddev.dev                                          #
+#########################################################################################################
+
+#Plugin licence key:
+license-key: "YOUR_LICENSE_KEY"
+
+# Plugin tag configuration
+plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
 
 # Plugin tag configuration
 plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
