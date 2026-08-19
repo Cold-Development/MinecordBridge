@@ -17,8 +17,6 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
     private final String[] roleNames;
     private final Role[] roles;
     private final HashMap<String, String[]> removeCommands;
-    private String username;
-
     public RoleRemoveListener(Role[] roles) {
         roleNames = minecord.roleNames;
         this.roles = roles;
@@ -27,18 +25,14 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
 
     @Override
     public void onUserRoleRemove(UserRoleRemoveEvent roleEvent) {
-        int rolesChanged = 0;
+        String removedRoleName = getConfiguredRoleName(roleEvent.getRole());
+        if (removedRoleName == null || !db.doesEntryExist(roleEvent.getUser().getId())) return;
 
-        username = db.getUsername(roleEvent.getUser().getId());
-
-        for (Role role : roles) {
-            if (roleEvent.getRole() != role) {
-                rolesChanged++;
-            }
-        }
-        if (rolesChanged >= roles.length || !db.doesEntryExist(roleEvent.getUser().getId())) {
-            return;
-        }
+        String username = db.getUsername(roleEvent.getUser().getId());
+        String linkedRoleName = db.getRoleName(roleEvent.getUser().getId());
+        // A linked account can have benefits for one configured role only. Do not
+        // remove them when a different tracked role is removed.
+        if (linkedRoleName != null && !linkedRoleName.equalsIgnoreCase(removedRoleName)) return;
 
         try {
             db.removeLink(roleEvent.getUser().getId());
@@ -46,7 +40,7 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
             // Log before running remove commands
             minecord.log(roleEvent.getUser().getDiscriminatedName() + " has lost benefits from role " + roleEvent.getRole().getName() + ".");
 
-            runRemoveCommands(roleEvent.getRole());
+            runRemoveCommands(removedRoleName, username);
 
         } catch (Exception e) {
             minecord.error("Error removing roles: " + username + ". Stack Trace:");
@@ -54,18 +48,19 @@ public class RoleRemoveListener implements UserRoleRemoveListener {
         }
     }
 
-    private void runRemoveCommands(Role role) {
+    private String getConfiguredRoleName(Role role) {
+        for (String name : roleNames) {
+            String roleId = minecord.roleAndID.get(name);
+            if (roleId != null && roleId.equals(String.valueOf(role.getId()))) return name;
+        }
+        return null;
+    }
+
+    private void runRemoveCommands(String roleName, String username) {
         ConsoleCommandSender console = minecord.getServer().getConsoleSender();
 
-        String roleName = "";
-        for (String name : roleNames) {
-            if (name.equalsIgnoreCase(role.getName())) {
-                roleName = name;
-                break;
-            }
-        }
-
         String[] cmds = removeCommands.get(roleName);
+        if (cmds == null) return;
 
         for (String cmdSend : cmds) {
             if (cmdSend.contains("%user%")) {

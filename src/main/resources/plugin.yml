@@ -3,8 +3,14 @@ version: '${project.version}'
 main: org.padrewin.minecordbridge.MinecordBridge
 api-version: '1.20'
 authors: [padrewin]
+softdepend: [PlaceholderAPI]
+
 commands:
   minecord:
-    description: MinecordBridge total permissions
-    permission: minecord.admin
+    description: MinecordBridge commands
     aliases: [mcb, mcord]
+
+permissions:
+  minecord.admin:
+    description: Access to MinecordBridge admin commands
+    default: op

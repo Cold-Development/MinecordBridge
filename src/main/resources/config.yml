@@ -6,12 +6,6 @@
 #    Links: https://colddev.dev || https://discord.colddev.dev                                          #
 #########################################################################################################
 
-#Plugin licence key:
-license-key: "YOUR_LICENSE_KEY"
-
-# Plugin tag configuration
-plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
-
 # Plugin tag configuration
 plugin-tag: "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f " # The tag to be used in front of messages.
 
@@ -24,7 +18,7 @@ bot-token: "BOT_TOKEN" # The token of the Discord bot. Replace "BOT_TOKEN" with 
 server-id: "SERVER_ID" # The ID of the Discord server where the bot is active. Replace "SERVER_ID" with the actual server ID.
 
 # Settings for changing nickname on Discord upon linking
-change-nickanme-on-link: false # If set to true, the bot will change the user's nickname on Discord when the Minecraft account is verified.
+change-nickname-on-link: false # If set to true, the bot will change the user's nickname on Discord when the Minecraft account is verified.
 
 # Settings for chat stream (ChatStream)
 enable-chatstream: false # If set to true, messages from Minecraft will be sent to a specific Discord channel.
@@ -44,3 +38,22 @@ exampleRole:
   remove-commands: # Commands to execute when the role is removed
     - example command 1
     - example command 2
+
+# Server Boost milestone tracking.
+# When enabled, MinecordBridge records the moment a member starts boosting your Discord
+# server (detected via Discord's automatic Server Booster role) and lets them claim
+# rewards in-game via "/mcord boost claim" once they've boosted long enough.
+# Months are approximated as 30-day periods.
+# The %minecordbridge_boosting_since% PlaceholderAPI placeholder returns the unix
+# timestamp (in seconds) of when the player started boosting, or "0" if not boosting.
+boost-tracking:
+  enabled: false
+  booster-role-id: "ROLE_ID" # The ID of Discord's automatic Server Booster role.
+  milestones:
+    - months: 1
+      commands: # %user% is replaced with the player's Minecraft username, %uuid% with their UUID
+        - example command 1
+    - months: 2
+      commands:
+        - example command 1
+        - example command 2

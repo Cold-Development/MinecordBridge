@@ -4,10 +4,8 @@ import org.bukkit.plugin.Plugin;
 import org.padrewin.minecordbridge.MinecordBridge;
 
 import java.sql.*;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * Database manager class with specific pull/push methods for a sqlite database
@@ -31,7 +29,9 @@ public class Database {
 
         // Check if the table exists and update its structure if necessary
         updateTableStructure("link",
-                "CREATE TABLE IF NOT EXISTS link(minecraftid TEXT NOT NULL, discordid TEXT NOT NULL, username TEXT NOT NULL)");
+                "CREATE TABLE IF NOT EXISTS link(minecraftid TEXT NOT NULL, discordid TEXT NOT NULL, username TEXT NOT NULL, rolename TEXT)");
+        updateTableStructure("boosts",
+                "CREATE TABLE IF NOT EXISTS boosts(discordid TEXT NOT NULL, boostsince BIGINT NOT NULL, claimedmilestones TEXT)");
     }
 
     /**
@@ -62,15 +62,40 @@ public class Database {
      * @param username Minecraft Username
      * @param minecraftID Minecraft UUID
      */
-    public void insertLink(long discordID, String username, UUID minecraftID) {
+    public void insertLink(long discordID, String username, UUID minecraftID, String roleName) {
         try {
-            PreparedStatement stmt = dbcon.prepareStatement("INSERT INTO link(minecraftid,discordid,username) VALUES (?,?,?)");
+            PreparedStatement stmt = dbcon.prepareStatement("INSERT INTO link(minecraftid,discordid,username,rolename) VALUES (?,?,?,?)");
             stmt.setString(1, minecraftID.toString());
             stmt.setString(2, Long.toString(discordID));
             stmt.setString(3, username);
+            stmt.setString(4, roleName);
             stmt.execute();
         } catch (SQLException e) {
             minecord.error("Error inserting link into database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+    }
+
+    public String getRoleName(long discordID) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT rolename FROM link WHERE discordid=?")) {
+            stmt.setString(1, Long.toString(discordID));
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getString("rolename") : null;
+            }
+        } catch (SQLException e) {
+            minecord.error("Error getting role name from database! Stack Trace:");
+            minecord.error(e.getMessage());
+            return null;
+        }
+    }
+
+    public void updateRoleName(long discordID, String roleName) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("UPDATE link SET rolename=? WHERE discordid=?")) {
+            stmt.setString(1, roleName);
+            stmt.setString(2, Long.toString(discordID));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            minecord.error("Error updating role name in database! Stack Trace:");
             minecord.error(e.getMessage());
         }
     }
@@ -198,6 +223,123 @@ public class Database {
         }
     }
 
+    public String getDiscordID(UUID minecraftID) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT discordid FROM link WHERE minecraftid=?")) {
+            stmt.setString(1, minecraftID.toString());
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getString("discordid") : null;
+            }
+        } catch (SQLException e) {
+            minecord.error("Error getting discordid from database! Stack Trace:");
+            minecord.error(e.getMessage());
+            return null;
+        }
+    }
+
+    public boolean hasBoostRecord(long discordID) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT discordid FROM boosts WHERE discordid=?")) {
+            stmt.setString(1, Long.toString(discordID));
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next();
+            }
+        } catch (SQLException e) {
+            minecord.error("Error checking boost record in database! Stack Trace:");
+            minecord.error(e.getMessage());
+            return false;
+        }
+    }
+
+    public void startBoosting(long discordID, long boostSinceEpochSeconds) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("INSERT INTO boosts(discordid, boostsince, claimedmilestones) VALUES (?,?,?)")) {
+            stmt.setString(1, Long.toString(discordID));
+            stmt.setLong(2, boostSinceEpochSeconds);
+            stmt.setString(3, "");
+            stmt.execute();
+        } catch (SQLException e) {
+            minecord.error("Error inserting boost record into database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+    }
+
+    public void stopBoosting(long discordID) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("DELETE FROM boosts WHERE discordid=?")) {
+            stmt.setString(1, Long.toString(discordID));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            minecord.error("Error removing boost record from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+    }
+
+    public Long getBoostSince(long discordID) {
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT boostsince FROM boosts WHERE discordid=?")) {
+            stmt.setString(1, Long.toString(discordID));
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getLong("boostsince") : null;
+            }
+        } catch (SQLException e) {
+            minecord.error("Error getting boost since from database! Stack Trace:");
+            minecord.error(e.getMessage());
+            return null;
+        }
+    }
+
+    public List<Long> getAllBoostingDiscordIds() {
+        List<Long> ids = new ArrayList<>();
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT discordid FROM boosts");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                try {
+                    ids.add(Long.parseLong(rs.getString("discordid")));
+                } catch (NumberFormatException ignored) {
+                }
+            }
+        } catch (SQLException e) {
+            minecord.error("Error retrieving boosting Discord IDs from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return ids;
+    }
+
+    public Set<Integer> getClaimedMilestones(long discordID) {
+        Set<Integer> claimed = new HashSet<>();
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT claimedmilestones FROM boosts WHERE discordid=?")) {
+            stmt.setString(1, Long.toString(discordID));
+            try (ResultSet rs = stmt.executeQuery()) {
+                if (rs.next()) {
+                    String raw = rs.getString("claimedmilestones");
+                    if (raw != null && !raw.isBlank()) {
+                        for (String part : raw.split(",")) {
+                            try {
+                                claimed.add(Integer.parseInt(part.trim()));
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            minecord.error("Error getting claimed boost milestones from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return claimed;
+    }
+
+    public void addClaimedMilestone(long discordID, int months) {
+        Set<Integer> claimed = getClaimedMilestones(discordID);
+        claimed.add(months);
+        String joined = claimed.stream().sorted().map(String::valueOf).collect(Collectors.joining(","));
+
+        try (PreparedStatement stmt = dbcon.prepareStatement("UPDATE boosts SET claimedmilestones=? WHERE discordid=?")) {
+            stmt.setString(1, joined);
+            stmt.setString(2, Long.toString(discordID));
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            minecord.error("Error updating claimed boost milestones in database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+    }
+
     /* Private Methods */
 
     private void updateTableStructure(String tableName, String createTableQuery) throws SQLException {
@@ -221,20 +363,12 @@ public class Database {
                 String[] requiredColumns = columnsPart.split(",");
 
                 for (String requiredColumn : requiredColumns) {
-                    requiredColumn = requiredColumn.trim().split("\\s+")[0]; // Get only the column name
-                    if (!existingColumns.contains(requiredColumn)) {
+                    String columnDefinition = requiredColumn.trim();
+                    String columnName = columnDefinition.split("\\s+")[0];
+                    if (!existingColumns.contains(columnName)) {
                         // Column doesn't exist, add it
-                        stmt.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN " + requiredColumn);
-                        if (minecord.debugMode) minecord.debug("Added column '" + requiredColumn + "' to table '" + tableName + "'.");
-                    }
-                }
-
-                // Check for columns to remove
-                for (String existingColumn : existingColumns) {
-                    if (!createTableQuery.contains(existingColumn)) {
-                        // Column exists in the table but not in the required structure, remove it
-                        stmt.executeUpdate("ALTER TABLE " + tableName + " DROP COLUMN " + existingColumn);
-                        if (minecord.debugMode) minecord.debug("Removed column '" + existingColumn + "' from table '" + tableName + "'.");
+                        stmt.executeUpdate("ALTER TABLE " + tableName + " ADD COLUMN " + columnDefinition);
+                        if (minecord.debugMode) minecord.debug("Added column '" + columnName + "' to table '" + tableName + "'.");
                     }
                 }
             }
@@ -277,4 +411,39 @@ public class Database {
         }
         return linkedUsers;
     }
+
+    public List<Map.Entry<String, String>> getAllLinkedUsersWithDiscordID() {
+        List<Map.Entry<String, String>> linkedUsers = new ArrayList<>();
+        try {
+            PreparedStatement stmt = dbcon.prepareStatement("SELECT username, discordid FROM link");
+            ResultSet rs = stmt.executeQuery();
+
+            while (rs.next()) {
+                String username = rs.getString("username");
+                String discordID = rs.getString("discordid");
+                linkedUsers.add(new AbstractMap.SimpleEntry<>(username, discordID));
+            }
+        } catch (SQLException e) {
+            minecord.error("Error retrieving all linked users with Discord ID from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return linkedUsers;
+    }
+
+    public List<LinkedAccount> getAllLinkedAccounts() {
+        List<LinkedAccount> linkedAccounts = new ArrayList<>();
+        try (PreparedStatement stmt = dbcon.prepareStatement("SELECT username, discordid, rolename FROM link");
+             ResultSet rs = stmt.executeQuery()) {
+            while (rs.next()) {
+                linkedAccounts.add(new LinkedAccount(
+                        rs.getString("username"), rs.getString("discordid"), rs.getString("rolename")));
+            }
+        } catch (SQLException e) {
+            minecord.error("Error retrieving linked accounts from database! Stack Trace:");
+            minecord.error(e.getMessage());
+        }
+        return linkedAccounts;
+    }
+
+    public record LinkedAccount(String username, String discordId, String roleName) { }
 }

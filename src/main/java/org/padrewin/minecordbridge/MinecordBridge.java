@@ -3,6 +3,7 @@ package org.padrewin.minecordbridge;
 import io.papermc.paper.event.player.AsyncChatEvent;
 import net.luckperms.api.LuckPerms;
 import net.md_5.bungee.api.ChatColor;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.bukkit.Bukkit;
 import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -21,9 +22,11 @@ import org.padrewin.minecordbridge.commands.tabcomplete.MCBTabComplete;
 import org.padrewin.minecordbridge.database.Database;
 import org.padrewin.minecordbridge.javacord.JavacordHelper;
 import org.padrewin.minecordbridge.lib.LibrarySetup;
+import org.padrewin.minecordbridge.linking.LinkManager;
 import org.padrewin.minecordbridge.listeners.minecraft.ChatListener;
 import org.padrewin.minecordbridge.listeners.minecraft.LoginListener;
 import org.padrewin.minecordbridge.listeners.minecraft.LogoutListener;
+import org.padrewin.minecordbridge.placeholders.MinecordPlaceholders;
 
 import java.io.File;
 import java.io.IOException;
@@ -62,7 +65,16 @@ public class MinecordBridge extends JavaPlugin {
     private List<String> rolesParsed = new ArrayList<>();
     public String pluginTag;
 
+    public boolean boostTrackingEnabled = false;
+    public String boosterRoleId;
+    public List<BoostMilestone> boostMilestones = new ArrayList<>();
+
     private DiscordApi discordApi;
+    private LinkManager linkManager;
+    private MinecordPlaceholders placeholders;
+
+    public record BoostMilestone(int months, String[] commands) { }
+
     // ANSI escape codes for colors
     public static final String ANSI_RESET = "\u001B[0m";
     public static final String ANSI_GREEN = "\u001B[32m";
@@ -76,8 +88,28 @@ public class MinecordBridge extends JavaPlugin {
         return getPlugin(MinecordBridge.class);
     }
 
+    public LinkManager getLinkManager() {
+        return linkManager;
+    }
+
+    /**
+     * Javacord 3.8.0 predates Discord Components v2. Discord still sends these
+     * message updates to every gateway client, although this plugin does not
+     * use them. Do not let the library print a full packet and stack trace for
+     * every such update.
+     */
+    private void suppressUnsupportedJavacordPacketWarnings() {
+        try {
+            Configurator.setLevel("org.javacord.core.util.gateway.PacketHandler", org.apache.logging.log4j.Level.ERROR);
+        } catch (LinkageError | RuntimeException exception) {
+            getLogger().warning("Could not configure the Javacord packet logger: " + exception.getMessage());
+        }
+    }
+
     @Override
     public void onEnable() {
+
+        suppressUnsupportedJavacordPacketWarnings();
 
         String name = getDescription().getName();
         getLogger().info("");
@@ -87,7 +119,7 @@ public class MinecordBridge extends JavaPlugin {
         getLogger().info("| |__| |_| | |___| |_| |");
         getLogger().info(" \\____\\___/|_____|____/");
         getLogger().info("    " + name + " v" + getDescription().getVersion());
-        getLogger().info("    Author(s): " + (String)getDescription().getAuthors().get(0));
+        getLogger().info("    Author(s): " + getDescription().getAuthors().get(0));
         getLogger().info("    (c) Cold Development. All rights reserved.");
         getLogger().info("");
 
@@ -114,6 +146,9 @@ public class MinecordBridge extends JavaPlugin {
             error("Exception Message:" + e.getMessage());
             error("SQL State: " + e.getSQLState());
         }
+
+        /* Initialize LinkManager */
+        linkManager = new LinkManager();
 
         /* Config Parsing */
         if (parseConfig()) {
@@ -145,12 +180,26 @@ public class MinecordBridge extends JavaPlugin {
         // Load messages.yml
         saveDefaultMessagesConfig();
         loadMessagesConfig();
+
+        if (getServer().getPluginManager().getPlugin("PlaceholderAPI") != null) {
+            placeholders = new MinecordPlaceholders(this);
+            placeholders.register();
+            log("PlaceholderAPI detected! Registered placeholders.");
+        }
     }
 
     @Override
     public void onDisable() {
+        if (placeholders != null) {
+            placeholders.unregister();
+        }
+
         if (useChatStream) {
             ChatListener.sendServerCloseMessage();
+        }
+
+        if (linkManager != null) {
+            linkManager.clearAll();
         }
 
         if (js != null) {
@@ -163,9 +212,8 @@ public class MinecordBridge extends JavaPlugin {
 
         // Close the database connection
         if (db != null) {
-            db.close(); // Remove try-catch if SQLException is not thrown
+            db.close();
 
-            // Close the Discord API connection gracefully
             if (discordApi != null) {
                 discordApi.disconnect().join();
                 getLogger().info("Discord API closed.");
@@ -184,6 +232,10 @@ public class MinecordBridge extends JavaPlugin {
         if (useChatStream) {
             PlayerQuitEvent.getHandlerList().unregister(this);
             AsyncChatEvent.getHandlerList().unregister(this);
+        }
+
+        if (linkManager != null) {
+            linkManager.clearAll();
         }
 
         /* Reload database if it's gone */
@@ -211,14 +263,13 @@ public class MinecordBridge extends JavaPlugin {
         if (js == null) {
             js = new JavacordHelper(roleNames);
         } else {
-            js.reload(); // Ensure roles are reloaded in JavacordHelper
+            js.reload();
         }
     }
 
     public void initListeners() {
         try {
             new UpdateChecker(this, 118054).getVersion(version -> {
-                // Initializes Login Listener when no Updates
                 if (compareVersions(this.getPluginMeta().getVersion(), version) < 0) {
                     versions[0] = version;
                     versions[1] = this.getPluginMeta().getVersion();
@@ -237,7 +288,9 @@ public class MinecordBridge extends JavaPlugin {
     public boolean parseConfig() {
         try {
             botToken = getConfigString("bot-token");
-            if (getConfigString("bot-token").equalsIgnoreCase("BOTTOKEN") || getConfigString("bot-token").equalsIgnoreCase("")) throw new Exception();
+            if (getConfigString("bot-token").equalsIgnoreCase("BOTTOKEN") ||
+                    getConfigString("bot-token").equalsIgnoreCase("") ||
+                    getConfigString("bot-token").equalsIgnoreCase("BOT_TOKEN")) throw new Exception();
         } catch (Exception e) {
             saveDefaultConfig();
             warn("Invalid Bot Token! Please enter a valid Bot Token in config.yml and reload the plugin.");
@@ -246,7 +299,9 @@ public class MinecordBridge extends JavaPlugin {
 
         try {
             serverID = getConfigString("server-id");
-            if (getConfigString("server-id").equalsIgnoreCase("000000000000000000") || getConfigString("server-id").equalsIgnoreCase("")) throw new Exception();
+            if (getConfigString("server-id").equalsIgnoreCase("000000000000000000") ||
+                    getConfigString("server-id").equalsIgnoreCase("") ||
+                    getConfigString("server-id").equalsIgnoreCase("SERVER_ID")) throw new Exception();
             log("Discord server found!");
         } catch (Exception e) {
             saveDefaultConfig();
@@ -254,18 +309,48 @@ public class MinecordBridge extends JavaPlugin {
             return false;
         }
 
-        // Load plugin-tag from config
         pluginTag = applyHexColors(getConfigString("plugin-tag"));
         if (pluginTag == null || pluginTag.isEmpty()) {
-            pluginTag = "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f "; // Default value if not set in config
+            pluginTag = "&8「&#6E00A5M&#7914B2i&#8427BFn&#8F3BCCe&#9A4FD8c&#A563E5o&#B076F2r&#BB8AFFd&8」&7»&f ";
         } else {
-            pluginTag = applyHexColors(pluginTag); // Apply hex colors if pluginTag is set in config
+            pluginTag = applyHexColors(pluginTag);
         }
 
-        changeNickOnLink = getConfigBool("change-nickname-on-link");
+        // Keep the misspelled key as a backwards-compatible fallback for
+        // existing installations created with older default configs.
+        changeNickOnLink = config.contains("change-nickname-on-link")
+                ? getConfigBool("change-nickname-on-link")
+                : getConfigBool("change-nickanme-on-link");
+
+        parseBoostConfig();
 
         log("Config loaded!");
         return true;
+    }
+
+    private void parseBoostConfig() {
+        boostTrackingEnabled = getConfigBool("boost-tracking.enabled");
+        boosterRoleId = getConfigString("boost-tracking.booster-role-id");
+        boostMilestones = new ArrayList<>();
+
+        if (!boostTrackingEnabled) return;
+
+        for (Map<?, ?> entry : config.getMapList("boost-tracking.milestones")) {
+            Object monthsValue = entry.get("months");
+            if (!(monthsValue instanceof Number)) continue;
+
+            List<String> commands = new ArrayList<>();
+            Object commandsValue = entry.get("commands");
+            if (commandsValue instanceof List<?> rawCommands) {
+                for (Object command : rawCommands) {
+                    commands.add(String.valueOf(command));
+                }
+            }
+
+            boostMilestones.add(new BoostMilestone(((Number) monthsValue).intValue(), commands.toArray(new String[0])));
+        }
+
+        boostMilestones.sort(Comparator.comparingInt(BoostMilestone::months));
     }
 
     public Plugin getPermissionsPlugin(PluginManager pluginManager) {
@@ -299,7 +384,6 @@ public class MinecordBridge extends JavaPlugin {
 
     private void parseRoles() {
         try {
-            // Clear existing role data
             addCommands.clear();
             removeCommands.clear();
             roleAndID.clear();
@@ -316,10 +400,7 @@ public class MinecordBridge extends JavaPlugin {
                 roleAndID.put(roleName, Objects.requireNonNull(config.getConfigurationSection(roleName)).getString("role-id"));
             }
 
-            // Actualizăm lista de roluri procesate
             rolesParsed = Arrays.asList(roleNames);
-
-            //log(ANSI_GREEN + "Roles parsed: " + String.join(", ", roleNames) + ANSI_RESET);
         } catch (Exception e) {
             saveDefaultConfig();
             error("Error parsing roles! Make sure the config.yml is correct and reload the plugin. Stack Trace:");
@@ -327,7 +408,6 @@ public class MinecordBridge extends JavaPlugin {
         }
     }
 
-    // Getter pentru rolurile procesate
     public List<String> getRolesParsed() {
         return rolesParsed;
     }
@@ -363,7 +443,6 @@ public class MinecordBridge extends JavaPlugin {
         saveDefaultConfig();
         config = YamlConfiguration.loadConfiguration(customConfigFile);
 
-        // Look for defaults in the jar
         Reader defConfigStream = null;
         try {
             defConfigStream = new InputStreamReader(Objects.requireNonNull(this.getResource("config.yml")), StandardCharsets.UTF_8);
@@ -419,7 +498,6 @@ public class MinecordBridge extends JavaPlugin {
             messagesFile = new File(getDataFolder(), "messages.yml");
         }
         messagesConfig = YamlConfiguration.loadConfiguration(messagesFile);
-
     }
 
     public String getMessage(String key) {
@@ -460,30 +538,41 @@ public class MinecordBridge extends JavaPlugin {
         }
     }
 
-    // Method to compare two versions numerically
     private int compareVersions(String installedVersion, String newestVersion) {
-        String[] installedParts = installedVersion.split("\\.");
-        String[] newestParts = newestVersion.split("\\.");
+        String[] installedParts = normaliseVersion(installedVersion).split("\\.");
+        String[] newestParts = normaliseVersion(newestVersion).split("\\.");
 
         int minLength = Math.min(installedParts.length, newestParts.length);
         for (int i = 0; i < minLength; i++) {
-            int installedPart = Integer.parseInt(installedParts[i]);
-            int newestPart = Integer.parseInt(newestParts[i]);
+            int installedPart = parseVersionPart(installedParts[i]);
+            int newestPart = parseVersionPart(newestParts[i]);
             if (installedPart < newestPart) {
-                return -1; // installed version is older
+                return -1;
             } else if (installedPart > newestPart) {
-                return 1; // installed version is newer
+                return 1;
             }
         }
 
-        // If we reach here, versions are equal up to minLength
-        // So, if one version has more parts, it is considered newer
         if (installedParts.length < newestParts.length) {
-            return -1; // installed version is older
+            return -1;
         } else if (installedParts.length > newestParts.length) {
-            return 1; // installed version is newer
+            return 1;
         } else {
-            return 0; // versions are exactly the same
+            return 0;
+        }
+    }
+
+    private String normaliseVersion(String version) {
+        if (version == null || version.isBlank()) return "0";
+        return version.trim().replaceFirst("^[vV]", "").replaceAll("[^0-9.]+", ".");
+    }
+
+    private int parseVersionPart(String part) {
+        if (part == null || part.isBlank()) return 0;
+        try {
+            return Integer.parseInt(part);
+        } catch (NumberFormatException ignored) {
+            return 0;
         }
     }
 

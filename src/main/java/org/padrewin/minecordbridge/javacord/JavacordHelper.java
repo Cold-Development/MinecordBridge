@@ -1,11 +1,9 @@
 package org.padrewin.minecordbridge.javacord;
 
-import net.md_5.bungee.api.ChatColor;
-import org.bukkit.entity.Player;
+import org.bukkit.Bukkit;
 import org.javacord.api.DiscordApi;
 import org.javacord.api.DiscordApiBuilder;
 import org.javacord.api.entity.channel.TextChannel;
-import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.permission.Role;
 import org.javacord.api.entity.server.Server;
 import org.javacord.api.entity.user.User;
@@ -13,20 +11,14 @@ import org.javacord.api.event.message.MessageEditEvent;
 import org.javacord.api.interaction.ApplicationCommandInteraction;
 import org.javacord.api.listener.interaction.InteractionCreateListener;
 import org.javacord.api.listener.message.MessageEditListener;
-import org.javacord.api.util.logging.ExceptionLogger;
 import org.javacord.core.interaction.ButtonInteractionImpl;
 import org.javacord.core.interaction.SlashCommandInteractionImpl;
 import org.padrewin.minecordbridge.MinecordBridge;
 import org.padrewin.minecordbridge.database.Database;
-import org.padrewin.minecordbridge.listeners.discord.DMListener;
-import org.padrewin.minecordbridge.listeners.discord.DiscordMessageListener;
-import org.padrewin.minecordbridge.listeners.discord.RoleAddListener;
-import org.padrewin.minecordbridge.listeners.discord.RoleRemoveListener;
+import org.padrewin.minecordbridge.listeners.discord.*;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Optional;
+import java.time.Instant;
+import java.util.*;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -34,12 +26,15 @@ import java.util.concurrent.TimeUnit;
 
 public class JavacordHelper {
 
+    public SlashCommandListener slashCommandListener;
     public DiscordApi api;
     public Server discordServer;
     public RoleAddListener roleAddListener;
     public RoleRemoveListener roleRemoveListener;
+    public BoostTrackingListener boostTrackingListener;
     public DiscordMessageListener discordMessageListener;
     public Role[] roles;
+    private Role boosterRole;
     public TextChannel chatStreamChannel;
     private final MinecordBridge minecord = MinecordBridge.getPlugin();
     private String[] roleNames;
@@ -51,7 +46,6 @@ public class JavacordHelper {
     private Map<String, Integer> roleCounts = new HashMap<>();
     private static final int MAX_RETRIES = 3;
 
-    // ANSI escape codes for colors
     public static final String ANSI_RESET = "\u001B[0m";
     public static final String ANSI_GREEN = "\u001B[32m";
     public static final String ANSI_RED = "\u001B[31m";
@@ -65,17 +59,23 @@ public class JavacordHelper {
         parseConfig();
         if (doListeners) initListeners();
 
-        // Schedule cache refresh every hour
-        scheduler.scheduleAtFixedRate(this::refreshCache, 0, 1, TimeUnit.HOURS);
+        scheduler.scheduleAtFixedRate(() -> {
+            refreshCache();
+        }, 0, 1, TimeUnit.MINUTES);
 
-        // Add reconnect listener
-        api.addReconnectListener(event -> minecord.log(ANSI_GREEN + "Reconnected to Discord." + ANSI_RESET));
+        if (api != null) {
+            api.addReconnectListener(event -> minecord.log(ANSI_GREEN + "Reconnected to Discord." + ANSI_RESET));
+        }
 
-        // Schedule reconnect check
         scheduleReconnectCheck();
     }
 
     public void disableAPI() {
+        disconnectApi();
+        scheduler.shutdown();
+    }
+
+    private void disconnectApi() {
         try {
             if (api != null) {
                 api.disconnect().join();
@@ -85,33 +85,38 @@ public class JavacordHelper {
             minecord.error(ANSI_RED + "Error disconnecting from API! Stack Trace:" + ANSI_RESET);
             minecord.error(ANSI_RED + e.getMessage() + ANSI_RESET);
         }
-        scheduler.shutdown();
     }
 
     public void reload() {
         if (api != null) {
-            api.removeListener(roleAddListener);
-            api.removeListener(roleRemoveListener);
-            if (minecord.useChatStream) {
+            if (roleAddListener != null) api.removeListener(roleAddListener);
+            if (roleRemoveListener != null) api.removeListener(roleRemoveListener);
+            if (boostTrackingListener != null) api.removeListener(boostTrackingListener);
+            if (slashCommandListener != null) api.removeListener(slashCommandListener);
+            if (minecord.useChatStream && discordMessageListener != null) {
                 api.removeListener(discordMessageListener);
             }
         }
         roleAddListener = null;
         roleRemoveListener = null;
+        boostTrackingListener = null;
+        boosterRole = null;
+        slashCommandListener = null;
         discordMessageListener = null;
 
-        disableAPI();
+        // The scheduler belongs to this helper and must survive /minecord reload;
+        // otherwise periodic benefit reconciliation silently stops after reload.
+        disconnectApi();
 
-        // Reload roles and configuration
         roleNames = minecord.getRolesParsed().toArray(new String[0]);
-        roleAndID = new HashMap<>(minecord.roleAndID); // Reload the roleAndID map
+        roleAndID = new HashMap<>(minecord.roleAndID);
         roles = new Role[roleNames.length];
-
-        minecord.log(ANSI_GREEN + "Roles reloaded: " + String.join(", ", roleNames) + ANSI_RESET);
 
         parseConfig();
         if (doListeners) initListeners();
-        refreshCache(); // Refresh cache after reload
+        refreshCache();
+
+        minecord.log(ANSI_GREEN + "Reload finished successfully." + ANSI_RESET);
     }
 
     private void initListeners() {
@@ -120,41 +125,39 @@ public class JavacordHelper {
         api.addListener(roleAddListener);
         api.addListener(roleRemoveListener);
 
+        if (minecord.boostTrackingEnabled && boosterRole != null) {
+            boostTrackingListener = new BoostTrackingListener(boosterRole);
+            api.addListener(boostTrackingListener);
+        }
+
+        // Slash command listener
+        slashCommandListener = new SlashCommandListener(roles);
+        api.addListener(slashCommandListener);
+
+        // Register slash commands with Discord
+        SlashCommandRegistrar registrar = new SlashCommandRegistrar();
+        registrar.registerCommands(api);
+
         api.addListener((InteractionCreateListener) event -> {
             try {
-                if (event.getInteraction() instanceof SlashCommandInteractionImpl) {
-                    SlashCommandInteractionImpl slashCommandInteraction = (SlashCommandInteractionImpl) event.getInteraction();
-                    //minecord.log("Received slash command interaction event: " + ANSI_GREEN + slashCommandInteraction.toString() + ANSI_RESET);
-                    //minecord.log(ANSI_GREEN + "You can ignore this." + ANSI_YELLOW + " This is not an error." + ANSI_RESET);
+                if (event.getInteraction() instanceof SlashCommandInteractionImpl slashCommandInteraction) {
                     handleSlashCommand(slashCommandInteraction);
-                } else if (event.getInteraction() instanceof ButtonInteractionImpl) {
-                    ButtonInteractionImpl buttonInteraction = (ButtonInteractionImpl) event.getInteraction();
-                    //minecord.log("Received button interaction event: " + ANSI_GREEN + buttonInteraction.toString() + ANSI_RESET);
-                    //minecord.log(ANSI_GREEN + "You can ignore this." + ANSI_YELLOW + " This is not an error." + ANSI_RESET);
+                } else if (event.getInteraction() instanceof ButtonInteractionImpl buttonInteraction) {
                     handleButtonInteraction(buttonInteraction);
-                } else if (event.getInteraction() instanceof ApplicationCommandInteraction) {
-                    ApplicationCommandInteraction applicationCommandInteraction = (ApplicationCommandInteraction) event.getInteraction();
-                    //minecord.log("Received application command interaction: " + ANSI_GREEN + applicationCommandInteraction.toString() + ANSI_RESET);
-                    //minecord.log(ANSI_GREEN + "You can ignore this." + ANSI_YELLOW + " This is not an error." + ANSI_RESET);
+                } else if (event.getInteraction() instanceof ApplicationCommandInteraction applicationCommandInteraction) {
                     handleApplicationCommand(applicationCommandInteraction);
-                } else {
-                    //minecord.log(ANSI_YELLOW + "Unhandled interaction type: " + event.getClass().getName());
-                    //minecord.log(ANSI_GREEN + "You can ignore this." + ANSI_YELLOW + " This is not an error." + ANSI_RESET);
                 }
             } catch (Exception e) {
-                // Log detailed error information
                 minecord.error(ANSI_RED + "Error handling interaction: " + e.getMessage() + ANSI_RESET);
                 e.printStackTrace();
             }
         });
 
-        // Register a listener for Message Update events
         api.addListener(new MessageEditListener() {
             @Override
             public void onMessageEdit(MessageEditEvent event) {
                 try {
-
-                    //minecord.log("Message updated in channel ID: " + event.getChannel().getIdAsString() + ", Message ID: " + event.getMessage().getIdAsString());
+                    // placeholder
                 } catch (Exception e) {
                     minecord.error(ANSI_RED + "Error handling message update: " + e.getMessage() + ANSI_RESET);
                     e.printStackTrace();
@@ -186,6 +189,8 @@ public class JavacordHelper {
         } catch (Exception e) {
             minecord.warn(ANSI_YELLOW + "Could not connect to API! Please enter a valid Bot Token in config.yml and reload the plugin." + ANSI_RESET);
             minecord.warn(ANSI_YELLOW + "If the bot-token is valid, please file an issue on our GitHub." + ANSI_RESET);
+            doListeners = false;
+            return;
         }
 
         try {
@@ -199,10 +204,18 @@ public class JavacordHelper {
             for (int i = 0; i < roleNames.length; i++) {
                 final String roleName = roleNames[i];
                 roles[i] = api.getRoleById(roleAndID.get(roleName)).orElseThrow(() -> new NoSuchElementException("Role not found: " + roleName));
-                minecord.log(ANSI_GREEN + "Role " + roles[i].getName() + " loaded!" + ANSI_RESET);
             }
         } catch (NoSuchElementException e) {
             minecord.warn(ANSI_YELLOW + "One or more roles not found! Please enter valid Role ID's in the config.yml and reload the plugin." + ANSI_RESET);
+        }
+
+        if (minecord.boostTrackingEnabled) {
+            try {
+                boosterRole = api.getRoleById(minecord.boosterRoleId).orElseThrow(() -> new NoSuchElementException("Booster role not found!"));
+            } catch (NoSuchElementException e) {
+                minecord.warn(ANSI_YELLOW + "Boost tracking is enabled but the booster role ID is invalid! Please check config.yml." + ANSI_RESET);
+                boosterRole = null;
+            }
         }
 
         if (minecord.useChatStream) {
@@ -214,9 +227,6 @@ public class JavacordHelper {
                 minecord.warn(ANSI_YELLOW + "The specified Chat Stream Channel cannot be found! Please make sure the channel ID is valid in the config.yml and the channel exists, then reload the plugin." + ANSI_RESET);
             }
         }
-
-        // Refresh cache immediately after initialization
-        refreshCache();
     }
 
     private void refreshCache() {
@@ -227,8 +237,9 @@ public class JavacordHelper {
             for (String roleName : roleNames) {
                 boolean roleFound = false;
                 for (Role role : roles) {
-                    if (role.getName().equalsIgnoreCase(roleName)) {
-                        role.getUsers(); // Refresh role's user cache
+                    String roleId = roleAndID.get(roleName);
+                    if (role != null && roleId != null && roleId.equals(String.valueOf(role.getId()))) {
+                        role.getUsers();
                         roleCounts.put(roleName, role.getUsers().size());
                         roleFound = true;
                         break;
@@ -239,11 +250,10 @@ public class JavacordHelper {
                 }
             }
 
-            totalLinkedUsers = db.getAllLinkedUsers().size();
+            checkLinkedAccounts();
+            reconcileBoosters();
 
-            for (Map.Entry<String, Integer> entry : roleCounts.entrySet()) {
-                minecord.log(ANSI_GREEN + "Role " + entry.getKey() + " loaded with " + entry.getValue() + " users." + ANSI_RESET);
-            }
+            totalLinkedUsers = db.getAllLinkedUsers().size();
 
             minecord.log(ANSI_GREEN + "Total linked: " + ANSI_RED + totalLinkedUsers + ANSI_RESET);
             minecord.log(ANSI_GREEN + "Cache refreshed successfully." + ANSI_RESET);
@@ -254,107 +264,143 @@ public class JavacordHelper {
         }
     }
 
-    public boolean retroLinkSingle(Player player, String discriminatedName, String roleName) {
+    /**
+     * Reconciles linked accounts after restarts or missed Discord events.
+     * The role is saved when the account is linked, so each account is checked
+     * against the same role that granted its Minecraft benefits.
+     */
+    private void checkLinkedAccounts() {
+        if (api == null || discordServer == null) return;
         try {
-            Optional<User> userOpt = api.getCachedUserByDiscriminatedName(discriminatedName);
-            if (!userOpt.isPresent()) {
-                minecord.error(ANSI_RED + "User not found: " + discriminatedName + ANSI_RESET);
-                minecord.sendMessage(player, ChatColor.RED + "User not found: " + discriminatedName);
-                return false;
-            }
-            User user = userOpt.get();
+            List<Database.LinkedAccount> linkedUsers = db.getAllLinkedAccounts();
 
-            Optional<Role> roleOpt = discordServer.getRoleById(roleAndID.get(roleName));
-            if (!roleOpt.isPresent()) {
-                //minecord.error(ANSI_RED + "Role not found: " + roleName + ANSI_RESET); # Activate only for debugging.
-                //minecord.error(ANSI_RED + "Note that role names are case-sensitive." + ANSI_RESET); # Activate only for debugging.
-                minecord.sendMessage(player, ChatColor.RED + "Role not found: " + roleName);
-                minecord.sendMessage(player, ChatColor.RED + "Note that role names are case-sensitive.");
-                return false;
-            }
-            Role role = roleOpt.get();
+            for (Database.LinkedAccount account : linkedUsers) {
+                String playerName = account.username();
+                String discordID = account.discordId();
 
-            if (db.doesEntryExist(user.getId())) {
-                minecord.sendMessage(player, ChatColor.RED + "User is already linked.");
-                return false;
-            }
-            sendRoleAddMessage(role, user);
-            return true;
-        } catch (NoSuchElementException e) {
-            minecord.error(ANSI_RED + "Error adding user to role: " + discriminatedName + ". Stack Trace:" + ANSI_RESET);
-            minecord.error(ANSI_RED + e.getMessage() + ANSI_RESET);
-            e.printStackTrace();
-            minecord.sendMessage(player, ChatColor.RED + "Error adding user to role: " + discriminatedName);
-            return false;
-        } catch (Exception e) {
-            minecord.error(ANSI_RED + "General error: " + e.getMessage() + ANSI_RESET);
-            e.printStackTrace();
-            minecord.sendMessage(player, ChatColor.RED + "General error: " + e.getMessage());
-            return false;
-        }
-    }
+                User user = api.getUserById(discordID).join();
 
-    private void sendRoleAddMessage(Role role, User user) {
-        boolean messageSent = false;
-        int attempt = 0;
+                if (user != null) {
+                    String roleName = account.roleName();
+                    if (roleName == null || roleName.isBlank()) {
+                        roleName = inferLegacyRoleName(user);
+                        if (roleName != null) db.updateRoleName(Long.parseLong(discordID), roleName);
+                    }
 
-        while (!messageSent && attempt < MAX_RETRIES) {
-            try {
-                new MessageBuilder()
-                        .append(minecord.getMessage("Auto-Role.boost_message"))
-                        .append("\n")
-                        .append(minecord.getMessage("Auto-Role.registration_question"))
-                        .send(user).thenAccept(msg -> {
-                            pmChannel = msg.getChannel();
-                            user.addUserAttachableListener(new DMListener(role, pmChannel));
-                        }).exceptionally(ExceptionLogger.get());
-                messageSent = true;
-            } catch (Exception e) {
-                attempt++;
-                minecord.error(ANSI_RED + "Error sending message to user: " + user.getDiscriminatedName() + ". Attempt " + attempt + ". Stack Trace:" + ANSI_RESET);
-                minecord.error(ANSI_RED + e.getMessage() + ANSI_RESET);
-                if (attempt >= MAX_RETRIES) {
-                    minecord.error(ANSI_RED + "Failed to send message after " + MAX_RETRIES + " attempts." + ANSI_RESET);
-                    break;
+                    if (roleName == null) {
+                        minecord.warn("Cannot determine the benefit role for legacy link " + discordID + ". It will not be removed automatically.");
+                        continue;
+                    }
+
+                    String roleId = roleAndID.get(roleName);
+                    if (roleId == null) {
+                        minecord.warn("Configured role '" + roleName + "' for linked user " + discordID + " no longer exists. Keeping the link untouched.");
+                        continue;
+                    }
+
+                    boolean stillHasRole = user.getRoles(discordServer).stream()
+                            .anyMatch(role -> roleId.equals(String.valueOf(role.getId())));
+                    if (!stillHasRole) {
+                        minecord.log(ANSI_YELLOW + "User " + user.getDiscriminatedName() + " no longer has role " + roleName + ". Removing benefits." + ANSI_RESET);
+                        removeMinecraftPerks(playerName, roleName);
+                        db.removeLink(Long.parseLong(discordID));
+                    }
+                } else {
+                    removeLegacyOrKnownAccount(account);
                 }
-                e.printStackTrace();
             }
+        } catch (Exception e) {
+            minecord.error(ANSI_RED + "Error during linked-account check: " + e.getMessage() + ANSI_RESET);
+            e.printStackTrace();
         }
     }
 
-    public void retroLink() {
-        int users = 0;
-        for (Role role : roles) {
-            User[] usersInRole = new User[role.getUsers().size()];
-            usersInRole = role.getUsers().toArray(usersInRole);
-            if (usersInRole.length == 0) {
-                minecord.warn(ANSI_YELLOW + "No users in " + role.getName() + " role!" + ANSI_RESET);
-                return;
+    /**
+     * Reconciles boost tracking after restarts. Members who already had the
+     * Booster role before the feature was enabled (or before the bot was
+     * online to catch the role-add event) start being tracked from now, since
+     * Javacord cannot report their real boost start date. Members who lost
+     * the role while the bot was offline have their record cleared.
+     */
+    private void reconcileBoosters() {
+        if (!minecord.boostTrackingEnabled || boosterRole == null) return;
+
+        try {
+            Set<Long> currentBoosterIds = new HashSet<>();
+            for (User user : boosterRole.getUsers()) {
+                long discordId = user.getId();
+                currentBoosterIds.add(discordId);
+                if (!db.hasBoostRecord(discordId)) {
+                    db.startBoosting(discordId, Instant.now().getEpochSecond());
+                    minecord.log(ANSI_GREEN + "Discovered existing booster " + user.getDiscriminatedName() + "; boost tracking starts now." + ANSI_RESET);
+                }
             }
-            users = getUsers(users, role, usersInRole);
+
+            for (Long trackedId : db.getAllBoostingDiscordIds()) {
+                if (!currentBoosterIds.contains(trackedId)) {
+                    db.stopBoosting(trackedId);
+                }
+            }
+        } catch (Exception e) {
+            minecord.error(ANSI_RED + "Error reconciling boosters: " + e.getMessage() + ANSI_RESET);
+            e.printStackTrace();
         }
-        minecord.log(ANSI_GREEN + "Total: " + ANSI_RED + users + ANSI_RESET);
     }
 
-    private int getUsers(int users, Role role, User[] usersInRole) {
-        for (User user : usersInRole) {
-            if (db.doesEntryExist(user.getId())) break;
-            sendRoleAddMessage(role, user);
-            users++;
+    private String inferLegacyRoleName(User user) {
+        for (String roleName : roleNames) {
+            String roleId = roleAndID.get(roleName);
+            if (roleId != null && user.getRoles(discordServer).stream()
+                    .anyMatch(role -> roleId.equals(String.valueOf(role.getId())))) {
+                return roleName;
+            }
         }
-        minecord.log(ANSI_GREEN + role.getName() + " : " + users + ANSI_RESET);
+        // A legacy row has no role information. With exactly one configured role
+        // we can safely migrate it even after the user has lost that role.
+        return roleNames.length == 1 ? roleNames[0] : null;
+    }
 
-        return users;
+    private void removeLegacyOrKnownAccount(Database.LinkedAccount account) {
+        String roleName = account.roleName();
+        if ((roleName == null || roleName.isBlank()) && roleNames.length == 1) roleName = roleNames[0];
+        if (roleName == null || roleName.isBlank()) {
+            minecord.warn("User with Discord ID " + account.discordId() + " is unavailable, but their legacy benefit role is unknown.");
+            return;
+        }
+        minecord.log(ANSI_YELLOW + "User with Discord ID " + account.discordId() + " is not available. Removing benefits for role " + roleName + "." + ANSI_RESET);
+        removeMinecraftPerks(account.username(), roleName);
+        db.removeLink(Long.parseLong(account.discordId()));
+    }
+
+    private void removeMinecraftPerks(String playerName, String roleName) {
+        UUID playerUUID = Bukkit.getOfflinePlayer(playerName).getUniqueId();
+
+        if (!minecord.getConfig().contains(roleName)) {
+            minecord.log(ANSI_RED + "Role '" + roleName + "' not found in config.yml." + ANSI_RESET);
+            return;
+        }
+
+        List<String> removeCommands = minecord.getConfig().getStringList(roleName + ".remove-commands");
+
+        if (removeCommands.isEmpty()) {
+            return;
+        }
+
+        Bukkit.getScheduler().runTask(minecord, () -> {
+            for (String command : removeCommands) {
+                String processedCommand = command.replace("%user%", playerName).replace("%uuid%", playerUUID.toString());
+                Bukkit.dispatchCommand(Bukkit.getConsoleSender(), processedCommand);
+            }
+        });
     }
 
     private void forceReconnect() {
         if (api != null) {
             try {
                 minecord.log(ANSI_GREEN + "Forcing reconnect to Discord..." + ANSI_RESET);
-                api.disconnect().join();
-                api = new DiscordApiBuilder().setToken(minecord.botToken).setAllIntents().login().join();
+                disconnectApi();
                 parseConfig();
-                initListeners();
+                if (doListeners) initListeners();
                 minecord.log(ANSI_GREEN + "Forced reconnection to Discord successful." + ANSI_RESET);
             } catch (Exception e) {
                 minecord.error(ANSI_RED + "Error forcing reconnect to Discord: " + e.getMessage() + ANSI_RESET);
@@ -369,7 +415,7 @@ public class JavacordHelper {
                 minecord.error(ANSI_RED + "Detected disconnected state. Attempting to reconnect..." + ANSI_RESET);
                 forceReconnect();
             }
-        }, 0, 5, TimeUnit.MINUTES); // Adjust the interval as needed
+        }, 0, 5, TimeUnit.MINUTES);
     }
 
     private boolean isConnected() {

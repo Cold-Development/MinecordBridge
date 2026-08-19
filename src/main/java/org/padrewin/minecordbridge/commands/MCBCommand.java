@@ -5,99 +5,415 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.ConsoleCommandSender;
 import org.bukkit.entity.Player;
-import org.javacord.api.entity.channel.TextChannel;
-import org.javacord.api.entity.message.MessageBuilder;
 import org.javacord.api.entity.user.User;
 import org.jetbrains.annotations.NotNull;
 import org.padrewin.minecordbridge.MinecordBridge;
 import org.padrewin.minecordbridge.database.Database;
 import org.padrewin.minecordbridge.javacord.JavacordHelper;
-import org.padrewin.minecordbridge.listeners.discord.DMListener;
 
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class MCBCommand implements CommandExecutor {
 
+    private static final int LIST_PAGE_SIZE = 5;
+    private static final long SECONDS_PER_MONTH = 30L * 24 * 60 * 60;
+    private static final DateTimeFormatter BOOST_DATE_FORMAT = DateTimeFormatter.ofPattern("dd MMM yyyy").withZone(ZoneId.systemDefault());
+
     private final MinecordBridge minecord = MinecordBridge.getPlugin();
     private final JavacordHelper js;
-    private TextChannel pmChannel;
 
     public MCBCommand() {
         js = minecord.js;
     }
 
+    @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String s, String[] args) {
-        if (args.length > 0) {
-            if (sender instanceof Player player) {
-                if (args[0].equalsIgnoreCase("reload")) {
-                    minecord.reload();
-                    minecord.loadMessagesConfig();  // Adaugă această linie
-                    minecord.sendMessage(player, "Commands.reload_success");
-                    return true;
-                } else if (args[0].equalsIgnoreCase("retrolink")) {
-                    handleRetroLinkCommand(player, args);
-                    return true;
-                } else if (args[0].equalsIgnoreCase("unlink")) {
-                    handleUnlinkCommand(player, args);
-                    return true;
-                } else {
-                    minecord.sendMessage(player, "Commands.command_not_found");
-                    return true;
-                }
-            } else if (sender instanceof ConsoleCommandSender) {
-                if (args.length == 1) {
-                    if (args[0].equalsIgnoreCase("reload")) {
-                        minecord.reload();
-                        minecord.loadMessagesConfig();  // Adaugă această linie
-                        minecord.getLogger().info(minecord.getMessage("Commands.reload_success"));
-                        return true;
-                    } else if (args[0].equalsIgnoreCase("retrolink")) {
-                        js.retroLink();
-                        return true;
-                    } else {
-                        minecord.warn("Command not found!");
-                        return true;
-                    }
-                }
+        if (args.length == 0) {
+            return false;
+        }
+
+        if (sender instanceof Player player) {
+
+            if (args[0].equalsIgnoreCase("boost")) {
+                // Fara permission.
+                // Pluginul decide singur daca playerul poate revendica milestone-ul.
+                handleBoostCommand(player, args);
+                return true;
+            }
+
+            // Toate celelalte subcomenzi sunt administrative.
+            if (!player.hasPermission("minecord.admin")) {
+                minecord.sendMessage(player, "Commands.no_permission");
+                return true;
+            }
+
+            if (args[0].equalsIgnoreCase("reload")) {
+                minecord.reload();
+                minecord.loadMessagesConfig();
+                minecord.sendMessage(player, "Commands.reload_success");
+                return true;
+
+            } else if (args[0].equalsIgnoreCase("unlink")) {
+                handleUnlinkCommand(player, args);
+                return true;
+
+            } else if (args[0].equalsIgnoreCase("info")) {
+                handleInfoCommand(player, args);
+                return true;
+
+            } else if (args[0].equalsIgnoreCase("list")) {
+                handleListCommand(player, args);
+                return true;
+
+            } else {
+                minecord.sendMessage(player, "Commands.command_not_found");
+                return true;
+            }
+
+        } else if (sender instanceof ConsoleCommandSender) {
+
+            if (args[0].equalsIgnoreCase("reload")) {
+                minecord.reload();
+                minecord.loadMessagesConfig();
+                minecord.getLogger().info(minecord.getMessage("Commands.reload_success"));
+                return true;
+
+            } else if (args[0].equalsIgnoreCase("info") && args.length >= 2) {
+                handleInfoCommandConsole(args);
+                return true;
+
+            } else if (args[0].equalsIgnoreCase("list")) {
+                handleListCommandConsole(args);
+                return true;
+
+            } else {
+                minecord.warn("Command not found!");
+                return true;
             }
         }
+
         return false;
     }
 
-    private void handleRetroLinkCommand(Player player, String[] args) {
+    private void handleInfoCommand(Player player, String[] args) {
         if (args.length < 2) {
-            minecord.sendMessage(player, "Commands.invalid_usage_retrolink");
+            minecord.sendMessage(player, "Commands.invalid_usage_info");
             return;
         }
 
-        String discriminatedName;
-        String roleName;
+        String query = args[1];
+        Database db = MinecordBridge.getDatabase();
+        List<Map.Entry<String, String>> allLinked = db.getAllLinkedUsersWithDiscordID();
 
-        if (args.length == 2) {
-            discriminatedName = args[1];
-            minecord.sendMessage(player, "Commands.role_mandatory");
-            return;
-        } else if (args.length == 3) {
-            discriminatedName = args[1];
-            roleName = args[2];
-        } else {
-            minecord.sendMessage(player, "Commands.invalid_usage_retrolink");
+        // Search by MC username
+        for (Map.Entry<String, String> entry : allLinked) {
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+
+            if (mcName.equalsIgnoreCase(query)) {
+                String discordName = getDiscordName(discordId);
+                player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                        "&fMinecraft: &a" + mcName + " &8| &fDiscord: &9" + discordName + " &8(&7" + discordId + "&8)"));
+                return;
+            }
+        }
+
+        // Search by Discord name (partial match)
+        for (Map.Entry<String, String> entry : allLinked) {
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+            String discordName = getDiscordName(discordId);
+
+            if (discordName.toLowerCase().contains(query.toLowerCase())) {
+                player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                        "&fMinecraft: &a" + mcName + " &8| &fDiscord: &9" + discordName + " &8(&7" + discordId + "&8)"));
+                return;
+            }
+        }
+
+        // Search by Discord ID
+        for (Map.Entry<String, String> entry : allLinked) {
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+
+            if (discordId.equals(query)) {
+                String discordName = getDiscordName(discordId);
+                player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                        "&fMinecraft: &a" + mcName + " &8| &fDiscord: &9" + discordName + " &8(&7" + discordId + "&8)"));
+                return;
+            }
+        }
+
+        minecord.sendMessage(player, "Commands.info_not_found");
+    }
+
+    private void handleInfoCommandConsole(String[] args) {
+        String query = args[1];
+        Database db = MinecordBridge.getDatabase();
+        List<Map.Entry<String, String>> allLinked = db.getAllLinkedUsersWithDiscordID();
+
+        for (Map.Entry<String, String> entry : allLinked) {
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+            String discordName = getDiscordName(discordId);
+
+            if (mcName.equalsIgnoreCase(query) || discordName.toLowerCase().contains(query.toLowerCase()) || discordId.equals(query)) {
+                minecord.log("Minecraft: " + mcName + " | Discord: " + discordName + " (" + discordId + ")");
+                return;
+            }
+        }
+
+        minecord.warn("No linked account found for: " + query);
+    }
+
+    private void handleListCommand(Player player, String[] args) {
+        Integer page = parsePage(args);
+        if (page == null) {
+            minecord.sendMessage(player, "Commands.invalid_usage_list");
             return;
         }
 
-        if (!discriminatedName.contains("#")) {
-            minecord.sendMessage(player, "Commands.invalid_username_format");
+        List<Map.Entry<String, String>> allLinked = MinecordBridge.getDatabase().getAllLinkedUsersWithDiscordID();
+        if (allLinked.isEmpty()) {
+            minecord.sendMessage(player, "Commands.list_empty");
             return;
+        }
+
+        int totalPages = (int) Math.ceil(allLinked.size() / (double) LIST_PAGE_SIZE);
+        if (page > totalPages) {
+            player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                    minecord.getMessage("Commands.list_invalid_page").replace("%pages%", String.valueOf(totalPages))));
+            return;
+        }
+
+        player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                minecord.getMessage("Commands.list_header")
+                        .replace("%page%", String.valueOf(page))
+                        .replace("%pages%", String.valueOf(totalPages))));
+
+        int fromIndex = (page - 1) * LIST_PAGE_SIZE;
+        int toIndex = Math.min(fromIndex + LIST_PAGE_SIZE, allLinked.size());
+
+        for (int i = fromIndex; i < toIndex; i++) {
+            Map.Entry<String, String> entry = allLinked.get(i);
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+            String discordName = getDiscordName(discordId);
+
+            player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                    "&fMinecraft: &a" + mcName + " &8| &fDiscord: &9" + discordName + " &8(&7" + discordId + "&8)" + getBoostSuffix(discordId)));
+        }
+
+        if (page < totalPages) {
+            player.sendMessage(minecord.applyHexColors(minecord.pluginTag +
+                    minecord.getMessage("Commands.list_next_page").replace("%next%", String.valueOf(page + 1))));
+        }
+    }
+
+    private void handleListCommandConsole(String[] args) {
+        Integer page = parsePage(args);
+        if (page == null) {
+            minecord.warn("Invalid page number: " + args[1]);
+            return;
+        }
+
+        List<Map.Entry<String, String>> allLinked = MinecordBridge.getDatabase().getAllLinkedUsersWithDiscordID();
+        if (allLinked.isEmpty()) {
+            minecord.warn("No linked accounts found.");
+            return;
+        }
+
+        int totalPages = (int) Math.ceil(allLinked.size() / (double) LIST_PAGE_SIZE);
+        if (page > totalPages) {
+            minecord.warn("Page " + page + " does not exist. Total pages: " + totalPages);
+            return;
+        }
+
+        minecord.log("Linked accounts (page " + page + "/" + totalPages + "):");
+
+        int fromIndex = (page - 1) * LIST_PAGE_SIZE;
+        int toIndex = Math.min(fromIndex + LIST_PAGE_SIZE, allLinked.size());
+
+        for (int i = fromIndex; i < toIndex; i++) {
+            Map.Entry<String, String> entry = allLinked.get(i);
+            String mcName = entry.getKey();
+            String discordId = entry.getValue();
+            String discordName = getDiscordName(discordId);
+            minecord.log("Minecraft: " + mcName + " | Discord: " + discordName + " (" + discordId + ")" + getBoostSuffixConsole(discordId));
+        }
+    }
+
+    private String getBoostSuffix(String discordId) {
+        if (!minecord.boostTrackingEnabled) return "";
+
+        Database db = MinecordBridge.getDatabase();
+        long id = Long.parseLong(discordId);
+        Long boostSince = db.getBoostSince(id);
+        if (boostSince == null) {
+            return " &8| &7Not boosting &8| &7Claimed: &7N/A";
+        }
+
+        return " &8| &fBoosting since: &b" + BOOST_DATE_FORMAT.format(Instant.ofEpochSecond(boostSince)) +
+                " &8| &fClaimed: &e" + formatClaimedMilestones(db.getClaimedMilestones(id));
+    }
+
+    private String getBoostSuffixConsole(String discordId) {
+        if (!minecord.boostTrackingEnabled) return "";
+
+        Database db = MinecordBridge.getDatabase();
+        long id = Long.parseLong(discordId);
+        Long boostSince = db.getBoostSince(id);
+        if (boostSince == null) {
+            return " | Not boosting | Claimed: N/A";
+        }
+
+        return " | Boosting since: " + BOOST_DATE_FORMAT.format(Instant.ofEpochSecond(boostSince)) +
+                " | Claimed: " + formatClaimedMilestones(db.getClaimedMilestones(id));
+    }
+
+    private String formatClaimedMilestones(Set<Integer> claimedMonths) {
+        if (claimedMonths.isEmpty()) return "N/A";
+        return claimedMonths.stream().sorted().map(months -> months + "mo").collect(Collectors.joining(", "));
+    }
+
+    private Integer parsePage(String[] args) {
+        if (args.length < 2) {
+            return 1;
         }
 
         try {
-            boolean isLinked = js.retroLinkSingle(player, discriminatedName, roleName);
-            if (isLinked) {
-                minecord.sendMessage(player, "Commands.instructions_sent");
+            int page = Integer.parseInt(args[1]);
+            return page < 1 ? 1 : page;
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    private void handleBoostCommand(Player player, String[] args) {
+        if (args.length < 3 || !args[1].equalsIgnoreCase("claim")) {
+            minecord.sendMessage(player, "Commands.invalid_usage_boost");
+            return;
+        }
+
+        if (!minecord.boostTrackingEnabled) {
+            minecord.sendMessage(player, "Commands.boost_tracking_disabled");
+            return;
+        }
+
+        int requestedMilestone;
+
+        try {
+            requestedMilestone = Integer.parseInt(args[2]);
+        } catch (NumberFormatException e) {
+            minecord.sendMessage(player, "Commands.invalid_usage_boost");
+            return;
+        }
+
+        Database db = MinecordBridge.getDatabase();
+
+        // Verifica daca playerul are contul de Discord link-uit.
+        String discordId = db.getDiscordID(player.getUniqueId());
+
+        if (discordId == null) {
+            minecord.sendMessage(player, "Commands.no_linked_account");
+            return;
+        }
+
+        long id;
+
+        try {
+            id = Long.parseLong(discordId);
+        } catch (NumberFormatException e) {
+            minecord.sendMessage(player, "Commands.no_linked_account");
+            return;
+        }
+
+        // Verifica daca boosteaza in momentul de fata.
+        Long boostSince = db.getBoostSince(id);
+
+        if (boostSince == null) {
+            minecord.sendMessage(player, "Commands.not_boosting");
+            return;
+        }
+
+        // Pluginul considera o luna = exact 30 zile.
+        long monthsBoosted =
+                (Instant.now().getEpochSecond() - boostSince) / SECONDS_PER_MONTH;
+
+        Set<Integer> claimed = db.getClaimedMilestones(id);
+
+        // Cauta milestone-ul cerut direct in configuratia pluginului.
+        MinecordBridge.BoostMilestone targetMilestone = null;
+
+        for (MinecordBridge.BoostMilestone milestone : minecord.boostMilestones) {
+            if (milestone.months() == requestedMilestone) {
+                targetMilestone = milestone;
+                break;
             }
+        }
+
+        // Milestone-ul cerut nu exista in config.
+        if (targetMilestone == null) {
+            minecord.sendMessage(player, "Commands.no_milestone_available");
+            return;
+        }
+
+        // Nu au trecut suficiente perioade de 30 zile.
+        if (monthsBoosted < targetMilestone.months()) {
+            minecord.sendMessage(player, "Commands.no_milestone_available");
+            return;
+        }
+
+        // Milestone-ul a fost deja revendicat.
+        if (claimed.contains(targetMilestone.months())) {
+            minecord.sendMessage(player, "Commands.no_milestone_available");
+            return;
+        }
+
+        // Executa DOAR reward-urile milestone-ului cerut.
+        for (String rewardCommand : targetMilestone.commands()) {
+            String formattedCommand = rewardCommand
+                    .replace("%user%", player.getName())
+                    .replace("%uuid%", player.getUniqueId().toString());
+
+            minecord.getServer().dispatchCommand(
+                    minecord.getServer().getConsoleSender(),
+                    formattedCommand
+            );
+        }
+
+        // Marcheaza DOAR milestone-ul acesta drept revendicat.
+        db.addClaimedMilestone(id, targetMilestone.months());
+
+        minecord.log(
+                player.getName()
+                        + " claimed boost milestone "
+                        + targetMilestone.months()
+                        + "."
+        );
+
+        player.sendMessage(
+                minecord.applyHexColors(
+                        minecord.pluginTag
+                                + "&fAi colectat milestone-ul &#FF0000#"
+                                + targetMilestone.months()
+                                + "&f!"
+                )
+        );
+    }
+
+    private String getDiscordName(String discordId) {
+        try {
+            User user = js.api.getUserById(discordId).join();
+            return user != null ? user.getDiscriminatedName() : "Unknown";
         } catch (Exception e) {
-            minecord.sendMessage(player, "Commands.error_linking_user" + e.getMessage());
-            e.printStackTrace();
+            return "Unknown (" + discordId + ")";
         }
     }
 
@@ -115,7 +431,6 @@ public class MCBCommand implements CommandExecutor {
             return;
         }
 
-        // Check if the role exists in the configuration
         List<String> roles = minecord.getConfig().getStringList("roles");
         if (!roles.contains(roleName)) {
             minecord.sendMessage(player, "Commands.role_not_found" + roleName);
@@ -124,7 +439,6 @@ public class MCBCommand implements CommandExecutor {
         }
 
         try {
-            // Obține utilizatorul de pe Discord folosind numele și discriminatorul
             User user = js.api.getServerById(minecord.serverID).get().getMemberByDiscriminatedName(discriminatedName).orElse(null);
             if (user == null) {
                 minecord.sendMessage(player, "Commands.player_not_found_discord");
@@ -132,10 +446,8 @@ public class MCBCommand implements CommandExecutor {
             }
 
             Database db = MinecordBridge.getDatabase();
-            // Obține ID-ul utilizatorului Discord direct ca long
             long discordId = user.getId();
 
-            // Verifică dacă utilizatorul are un cont legat în baza de date
             if (!db.doesEntryExist(discordId)) {
                 minecord.sendMessage(player, "Commands.no_linked_account");
                 return;
@@ -147,7 +459,11 @@ public class MCBCommand implements CommandExecutor {
                 return;
             }
 
-            executeRemoveCommands(minecraftUsername, roleName);
+            // The stored role is authoritative; older rows without it retain
+            // the command argument for backwards compatibility.
+            String linkedRoleName = db.getRoleName(discordId);
+            executeRemoveCommands(minecraftUsername,
+                    linkedRoleName == null || linkedRoleName.isBlank() ? roleName : linkedRoleName);
             db.removeLink(discordId);
 
             minecord.sendMessage(player, "Commands.account_unlinked");
@@ -167,46 +483,8 @@ public class MCBCommand implements CommandExecutor {
             }
 
             minecord.log(minecraftUsername + " has lost benefits from role " + roleName + ".");
-
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-
-    private void startLinking(Player player, String discName) {
-        Database db = MinecordBridge.getDatabase();
-        if (db.doesEntryExist(player.getUniqueId())) {
-            minecord.sendMessage(player, "Commands.account_already_linked");
-            return;
-        }
-
-        try {
-            User user;
-            if (discName.contains("#")) {
-                user = js.api.getServerById(minecord.serverID).get().getMemberByDiscriminatedName(discName).orElse(null);
-            } else {
-                user = js.api.getServerById(minecord.serverID).get().getMembersByName(discName).stream().findFirst().orElse(null);
-            }
-
-            if (user == null) {
-                minecord.sendMessage(player, "Commands.player_not_found_discord_simple");
-                return;
-            }
-
-            try {
-                new MessageBuilder()
-                        .append(minecord.getMessage("Commands.linking_dm"))
-                        .send(user).thenAccept(msg -> pmChannel = msg.getChannel()).join();
-            } catch (Exception e) {
-                minecord.error("Error sending message to user! Stack Trace:");
-                minecord.error(e.getMessage());
-            }
-            user.addUserAttachableListener(new DMListener(pmChannel));
-        } catch (NullPointerException e) {
-            minecord.sendMessage(player, "Commands.player_not_found_discord_simple");
-            minecord.error("Player is not found on Discord server! Stack Trace:");
-            minecord.error(e.getMessage());
-        }
-        minecord.sendMessage(player, "Commands.check_dm");
     }
 }
